@@ -14,6 +14,9 @@
 2. [아키텍처: Clean Architecture 8계층](#d-002-아키텍처-clean-architecture-8계층)
 3. [하이퍼바이저 추상화: Protocol 기반 어댑터 패턴](#d-003-하이퍼바이저-추상화-protocol-기반-어댑터-패턴)
 4. [개발 방식: 멀티 에이전트 빌드 시스템](#d-004-개발-방식-멀티-에이전트-빌드-시스템)
+5. [범위: 읽기 전용 인벤토리 포탈 + 코드 수준 강제](#d-005-범위-읽기-전용-인벤토리-포탈--코드-수준-강제)
+6. [데이터 정합성: CI 식별 규칙과 속성 출처 우선순위](#d-006-데이터-정합성-ci-식별-규칙과-속성-출처-우선순위)
+7. [수집 방식: 조회·수집 경로 분리](#d-007-수집-방식-조회수집-경로-분리)
 
 ---
 
@@ -26,14 +29,14 @@
 
 ### 결정
 
-백엔드는 **Python + FastAPI**로 구현한다. vCenter는 pyVmomi, Hyper-V는 pypsrp/WinRM(PowerShell Remoting)으로 연동한다.
+백엔드는 **Python + FastAPI**로 구현한다. vCenter는 pyVmomi, Hyper-V는 pypsrp/WinRM(PowerShell Remoting) + WMI로 연동한다.
 
 ### 근거
 
 - 동일 조직의 collectorinfra 프로젝트와 스택이 일치하여 인프라·운영 노하우와 Claude Code 구성요소를 재사용할 수 있음
-- pyVmomi는 VMware가 관리하는 공식 Python SDK로 vSphere 기능 커버리지가 넓음
-- Hyper-V는 네이티브 관리 인터페이스가 PowerShell이며, pypsrp로 원격 실행이 가능함
-- `scripts/arch_check.py`(Python AST 기반 계층 검사)를 수정 없이 재사용 가능
+- pyVmomi는 VMware가 관리하는 공식 Python SDK로, 대규모 인벤토리 수집에 필요한 PropertyCollector API를 완전히 지원함
+- Hyper-V는 네이티브 관리 인터페이스가 PowerShell/WMI이며, pypsrp로 원격 실행이 가능함
+- `scripts/arch_check.py`(Python AST 기반 규칙 검사)를 재사용 가능
 
 ### 고려한 대안
 
@@ -49,7 +52,7 @@
 | 항목 | 내용 |
 |------|------|
 | **결정일** | 2026-08-06 |
-| **상태** | 확정 |
+| **상태** | 확정 (2026-08-06 읽기 전용 범위 확정에 따라 모듈 구성 갱신) |
 
 ### 결정
 
@@ -61,20 +64,20 @@ domain → config/utils → infrastructure → application → orchestration →
 
 | 계층 | 경로 | 책임 |
 |------|------|------|
-| domain | `src/domain/` | 자원 엔티티, 테넌트/권한/Task 모델, 포트(Protocol) |
+| domain | `src/domain/` | 자원 엔티티, 연결 정보, 메타데이터, 변경 이력, 권한 모델, 포트(Protocol) |
 | config | `src/config.py` | 설정 |
 | utils | `src/utils/` | 공유 유틸 |
-| infrastructure | `src/infrastructure/` | 하이퍼바이저 어댑터, DB, 캐시, 보안, 리포지토리 |
-| application | `src/application/` | 유스케이스 |
-| orchestration | `src/orchestration/` | 인벤토리 동기화 워커, Task 실행기 |
+| infrastructure | `src/infrastructure/` | 하이퍼바이저 수집 어댑터, DB, 캐시, 보안, 저장소 |
+| application | `src/application/` | 유스케이스 (조회·검색, 정규화, 메타데이터 관리, 변경 이력, 리포트) |
+| orchestration | `src/orchestration/` | 수집 스케줄러/워커 |
 | interface | `src/api/` | FastAPI 어댑터 |
 | entry | `src/main.py` | 진입점 |
 
 ### 근거
 
-- 하이퍼바이저 연동 코드(변경이 잦고 외부 의존이 큼)를 도메인 로직에서 분리하여 교체 가능하게 유지
+- 하이퍼바이저 연동 코드(외부 의존이 크고 변경이 잦음)를 도메인 로직에서 분리하여 교체 가능하게 유지
 - 계층 위반을 사람이 리뷰로 잡는 대신 스크립트로 자동 검출 (collectorinfra에서 효과 검증됨)
-- 동기화 워커를 `orchestration`으로 분리하여 API 프로세스와 독립 배포 가능
+- **수집 워커를 `orchestration`으로 분리**하여 API 프로세스와 독립 배포 가능. 수집 부하가 조회 응답에 영향을 주지 않는다 (`spec.md` NFR-107)
 
 ### 고려한 대안
 
@@ -87,14 +90,16 @@ collectorinfra의 원본 계층에는 LangGraph 전용 계층(`prompts`, `nodes`
 | 항목 | 내용 |
 |------|------|
 | **결정일** | 2026-08-06 |
-| **상태** | 확정 |
+| **상태** | 확정 (2026-08-06 Protocol 명칭을 읽기 전용 성격에 맞게 변경) |
 
 ### 결정
 
-`src/domain/ports.py`에 `HypervisorConnector` Protocol을 정의하고, vCenter/Hyper-V 어댑터가 이를 구현한다.
-유스케이스는 Protocol만 알고 구체 어댑터는 `interface`/`entry` 계층의 팩토리에서 주입한다.
+`src/domain/ports.py`에 **`HypervisorInventoryReader`** Protocol을 정의하고, vCenter/Hyper-V 어댑터가 이를 구현한다.
+유스케이스와 수집 워커는 Protocol만 알고, 구체 어댑터는 `interface`/`entry` 계층의 팩토리에서 주입한다.
 
-이를 강제하기 위해 `scripts/arch_check.py`에 특화 규칙 2개를 구현했다:
+Protocol 이름에 `Reader`를 명시한 것은 이 포탈이 읽기 전용임을 인터페이스 이름 자체로 드러내기 위함이다 (D-005 참조).
+
+이를 강제하기 위해 `scripts/arch_check.py`에 특화 규칙을 구현했다:
 
 1. `application`/`orchestration` → `src.infrastructure.vcenter|hyperv` **직접 import 금지** (error)
 2. 하이퍼바이저 어댑터 간 **교차 참조 금지** (`vcenter` ↔ `hyperv`) (error)
@@ -104,11 +109,12 @@ collectorinfra의 원본 계층에는 LangGraph 전용 계층(`prompts`, `nodes`
 - 유스케이스에 `if hypervisor == "vcenter"` 분기가 퍼지면 하이퍼바이저 추가 시 전 계층을 수정해야 함
 - 어댑터 간 교차 참조를 허용하면 두 구현이 묶여 개별 교체·제거가 불가능해짐
 - 두 어댑터가 동일 Protocol 계약을 만족하므로 **동일 테스트 스위트로 계약 테스트**가 가능
+- 향후 하이퍼바이저 추가(Proxmox, Nutanix 등) 시 어댑터 구현만으로 지원 가능 (`spec.md` NFR-106)
 
 ### 미결 사항 (결정 필요)
 
-- vCenter ↔ Hyper-V 자원 모델 정규화 매핑 규칙 (Cluster, 네트워크, 스토리지 개념 대응) → `plans/02-domain-model.md`에서 설계 후 D-005로 기록
-- 한쪽만 지원하는 기능(예: ResourcePool)의 Protocol 표현 방식 — 미지원 예외 / capability 조회 / 선택적 메서드 → `plans/03-hypervisor-connector.md`에서 결정 후 기록
+- vCenter ↔ Hyper-V 자원 모델 정규화 매핑 규칙 (Cluster ↔ Failover Cluster, Datastore ↔ CSV/SMB, 포트그룹 ↔ 가상 스위치) → `plans/02-domain-model.md`에서 설계 후 D-008로 기록
+- 한쪽만 수집 가능한 속성(ResourcePool, vSphere Tags 등)의 Protocol 표현 방식 — 미수집 표시 / capability 조회 / Optional 필드 → `plans/03-inventory-reader-port.md`에서 결정 후 기록
 
 ---
 
@@ -117,25 +123,145 @@ collectorinfra의 원본 계층에는 LangGraph 전용 계층(`prompts`, `nodes`
 | 항목 | 내용 |
 |------|------|
 | **결정일** | 2026-08-06 |
-| **상태** | 확정 |
+| **상태** | 확정 (2026-08-06 Wave 구성을 읽기 전용 범위에 맞게 갱신) |
 
 ### 결정
 
 collectorinfra 프로젝트의 Claude Code 멀티 에이전트 구성(team-lead + 4개 서브에이전트)을 이 프로젝트에 이관하여 사용한다.
 품질 게이트는 `arch-check` → `/security-review` → `/code-review` → `/simplify` 순으로 적용한다.
 
+Wave 구성:
+
+| Wave | 병렬 모듈 |
+|---|---|
+| 1 | domain(모델·Protocol) ∥ security(자격증명) ∥ persistence(저장소) |
+| 2 | vcenter 어댑터 ∥ hyperv 어댑터 ∥ auth |
+| 3 | 조회·검색 유스케이스 ∥ 수집 스케줄러 ∥ 변경 이력 |
+| 4 | API ∥ 포탈 UI ∥ 리포트·내보내기 |
+
 ### 근거
 
 - Wave별 병렬 구현 + worktree 격리로 독립 모듈을 동시에 개발 가능
 - 특히 **vCenter/Hyper-V 어댑터는 교차 참조가 금지되어 있어 병렬 구현에 구조적으로 적합**
-- 자격증명·테넌트 격리·파괴적 작업이 핵심 위험이므로 `/security-review`를 필수 게이트로 승격
-  (collectorinfra는 읽기 전용 DB 접근이라 이 게이트가 선택 사항이었음)
+- 자격증명 보호와 조회 범위 격리가 핵심 위험이므로 `/security-review`를 필수 게이트로 승격
 
-### 원본 대비 변경 사항
+### 원본(collectorinfra) 대비 변경 사항
 
 | 항목 | collectorinfra | 이 프로젝트 |
 |------|---------------|------------|
-| 핵심 보안 제약 | 읽기 전용 DB (DML/DDL 차단) | 자격증명 보호 + 파괴적 작업 가드 + 테넌트 격리 |
-| 필수 품질 게이트 | arch-check, code-review | arch-check, **security-review**, code-review |
-| Wave 구성 | state/db/security → nodes → graph | domain → 어댑터 → 유스케이스/워커 → API/UI |
+| 핵심 보안 제약 | 읽기 전용 DB (DML/DDL 차단) | 하이퍼바이저 쓰기 API 차단 + 자격증명 보호 + 조회 범위 격리 |
+| 필수 품질 게이트 | arch-check, code-review | arch-check(읽기 전용 검사 포함), **security-review**, code-review |
+| Wave 구성 | state/db/security → nodes → graph | domain → 수집 어댑터 → 유스케이스/워커 → API/UI |
 | 스킬 카탈로그 | mcp-builder, frontend-design 등 | 현재 환경에 설치된 스킬만 (`plans/00-claude-skills-plugins.md` 참조) |
+
+---
+
+## D-005. 범위: 읽기 전용 인벤토리 포탈 + 코드 수준 강제
+
+| 항목 | 내용 |
+|------|------|
+| **결정일** | 2026-08-06 |
+| **상태** | 확정 |
+
+### 결정
+
+이 포탈은 **자원 정보를 수집·조회하는 읽기 전용 시스템**이며, 자원 생성·변경·삭제 기능을 구현하지 않는다.
+프로비저닝, 전원 제어, 스냅샷 조작, 리소스 변경, 마이그레이션은 **명시적 비목표**다.
+
+이를 문서 약속에 그치지 않게 하기 위해 **세 겹으로 강제**한다:
+
+1. **권한 차단** — 하이퍼바이저 접속 계정에 읽기 권한만 부여 (vCenter: Read-Only 역할)
+2. **인터페이스 차단** — 커넥터 Protocol에 조회 메서드만 정의 (`HypervisorInventoryReader`)
+3. **자동 검사** — `scripts/arch_check.py`가 `src/domain/ports.py`와 하이퍼바이저 어댑터의 public 메서드명을 AST로 검사하여, 자원 변경 접두사(`create_`, `delete_`, `power_`, `migrate_` 등) 사용 시 error로 차단
+
+세션·수집 제어 목적의 메서드(`start_session`, `stop_collection` 등)는 허용 목록으로 예외 처리한다.
+
+### 근거
+
+- 사용자가 요건 확정 시 "자원 생성이나 변경 기능은 필요하지 않다"고 명시
+- 읽기 전용은 **보안 경계이자 운영 안전장치**다. 통합 포탈이 다수 vCenter/Hyper-V에 대한 쓰기 권한을 갖는 것은 그 자체가 조직 전체의 단일 침해 지점이 된다
+- collectorinfra 프로젝트에서 "읽기 전용 DB 접근"을 코드 수준에서 강제한 방식이 효과적이었으며, 동일 패턴을 적용
+- 개발 중 편의를 위해 제어 메서드를 슬쩍 추가하는 것이 가장 흔한 범위 이탈 경로이므로, 리뷰가 아닌 자동 검사로 막는다
+
+### 한계 (인지하고 있어야 할 것)
+
+메서드명 검사는 **어댑터 구현 내부의 실제 쓰기 API 호출까지 잡지 못한다.**
+예를 들어 `get_vm_status()` 안에서 pyVmomi의 `PowerOffVM_Task()`를 호출하면 검사를 통과한다.
+따라서 verifier는 어댑터 구현체의 **실제 호출 대상 API를 코드에서 직접 확인**해야 한다 (`.claude/agents/verifier.md` 검증 항목 1번).
+
+### 고려한 대안
+
+| 대안 | 채택하지 않은 이유 |
+|------|-------------------|
+| 문서에만 명시 | 개발 중 범위 이탈을 막지 못함 |
+| 런타임 차단 (호출 시점 검사) | 이미 코드에 존재하는 것을 실행 시점에 막는 것이라 늦음. 정적 검사가 우선 |
+| 읽기 전용 계정에만 의존 | 계정 권한 설정은 운영 환경에서 바뀔 수 있음. 코드 차원의 방어가 필요 |
+
+---
+
+## D-006. 데이터 정합성: CI 식별 규칙과 속성 출처 우선순위
+
+| 항목 | 내용 |
+|------|------|
+| **결정일** | 2026-08-06 |
+| **상태** | 확정 (세부 규칙은 `plans/02-domain-model.md`에서 상세화) |
+
+### 결정
+
+ITIL CMDB의 식별·조정(Identification & Reconciliation) 개념을 도입한다.
+
+**CI 식별 규칙** — 재수집 시 동일 자원을 식별하는 속성 우선순위 (VM 기준):
+1. 연결 ID + 하이퍼바이저 고유 ID (vCenter `instanceUuid` / Hyper-V VM GUID)
+2. BIOS UUID
+3. MAC 주소 + 이름
+
+식별된 자원은 **갱신**하고, 식별되지 않을 때만 신규 생성한다. 중복 레코드 생성은 결함으로 취급한다.
+
+**속성 출처 우선순위(조정 규칙)** — 동일 속성을 여러 경로로 얻을 때의 신뢰 순서:
+- 게스트 OS: 도구 감지값(`guest.guestFullName` / KVP `OSName`) > VM 구성값(`config.guestFullName`)
+- **포탈 입력 메타데이터(소유자·환경·용도 등)는 수집 데이터가 덮어쓰지 않는다**
+
+**수집 불가 표현** — VMware Tools·통합 서비스 미설치로 게스트 정보를 얻지 못한 경우
+`None`(값 없음)이 아니라 **사유를 포함한 "수집 불가" 상태**로 표현한다.
+
+### 근거
+
+- CMDB는 중복 CI를 만들지 않고 기존 레코드를 갱신해야 하며, 사용 중지된 CI를 방치하면 stale 데이터가 서비스 맵을 오염시킨다는 것이 ITIL CMDB의 기본 원칙
+- 다수 수집 소스가 같은 속성을 갱신할 때 신뢰 순위를 정하지 않으면 값이 왕복하며 불안정해짐 (ServiceNow I&R의 reconciliation rule과 동일 문제)
+- 게스트 IP·OS는 도구 의존이라 100% 수집이 불가능한데(`spec.md` CST-02), 이를 빈 값으로 두면 "IP가 없는 VM"과 "IP를 알 수 없는 VM"이 구분되지 않아 인벤토리 신뢰도가 무너진다
+
+### 미결 사항
+
+- 삭제 자원의 유예 기간 (미발견 → 폐기 전환까지)
+- 변경 이력 보존 기간 및 아카이브 정책
+- 동일 자원이 서로 다른 연결에서 중복 수집될 때의 처리 (`spec.md` FR-308)
+
+---
+
+## D-007. 수집 방식: 조회·수집 경로 분리
+
+| 항목 | 내용 |
+|------|------|
+| **결정일** | 2026-08-06 |
+| **상태** | 확정 |
+
+### 결정
+
+사용자 조회 요청은 **하이퍼바이저를 직접 호출하지 않는다.**
+수집 워커가 주기적으로 인벤토리를 수집하여 저장소에 저장하고, 조회는 저장소만 참조한다.
+
+vCenter 수집은 **PropertyCollector + ContainerView + RetrievePropertiesEx 페이징**으로 필요한 속성만 일괄 조회한다.
+자원을 하나씩 순회하며 개별 속성을 읽는 방식은 금지한다.
+
+### 근거
+
+- 조회 응답 목표(1초 이내, `spec.md` NFR-101)를 하이퍼바이저 실시간 호출로는 달성할 수 없음
+- 다수의 사용자 조회가 그대로 vCenter API 호출로 전달되면 하이퍼바이저에 부하를 주며, 이는 운영 시스템에 대한 위험임
+- 하이퍼바이저 장애 시에도 조회가 동작해야 함 (부분 실패 허용, NFR-301)
+- PropertyCollector는 VMware가 대규모 환경의 일괄 조회를 위해 제공하는 표준 메커니즘이며, 개별 속성 순회 대비 왕복 횟수를 크게 줄인다
+
+### 트레이드오프
+
+조회 데이터는 **마지막 수집 시점의 스냅샷**이므로 실시간이 아니다.
+이를 사용자가 오해하지 않도록 자원별 최종 수집 시각과 신선도를 UI에 표시한다 (`spec.md` FR-502).
+실시간성이 필요한 요구(성능 모니터링, 알람)는 이 프로젝트의 범위가 아니다 (`spec.md` §1.2).

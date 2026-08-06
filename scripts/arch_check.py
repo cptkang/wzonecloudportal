@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
-"""Clean Architecture 계층 간 의존성 규칙 위반 자동 탐지 스크립트.
+"""아키텍처 규칙 위반 자동 탐지 스크립트.
 
-프로젝트의 계층 구조를 정의하고, 각 Python 파일의 import 문을 분석하여
-허용되지 않는 의존성 방향을 위반 목록으로 출력한다.
+두 종류의 규칙을 검사한다.
 
-이 프로젝트(클라우드 포탈)는 일반 계층 규칙에 더해 두 가지 특화 규칙을 적용한다.
-  1. 유스케이스(application)가 특정 하이퍼바이저 어댑터를 직접 import 금지
-     → domain의 HypervisorConnector Protocol을 통해서만 접근
-  2. 하이퍼바이저 어댑터 간 교차 참조 금지 (vcenter ↔ hyperv)
+1. 계층 의존성 (Clean Architecture)
+   각 Python 파일의 import 문을 분석하여 허용되지 않는 의존성 방향을 탐지한다.
+   - 프로젝트 특화 규칙 A: 유스케이스가 특정 하이퍼바이저 어댑터를 직접 import 금지
+   - 프로젝트 특화 규칙 B: 하이퍼바이저 어댑터 간 교차 참조 금지
+
+2. 읽기 전용 범위 (spec.md CST-01 / NFR-202)
+   이 포탈은 하이퍼바이저에 대해 어떠한 쓰기·제어 API도 호출하지 않는다.
+   커넥터 Protocol과 하이퍼바이저 어댑터에 자원을 변경하는 메서드가 정의되면 위반으로 탐지한다.
 
 사용법:
     python scripts/arch_check.py              # 전체 검사
@@ -31,12 +34,12 @@ from typing import Literal
 # ──────────────────────────────────────────────
 
 Layer = Literal[
-    "domain",        # 핵심 도메인 (VM/Host/Cluster 엔티티, 커넥터 Protocol)
+    "domain",        # 핵심 도메인 (자원 엔티티, 커넥터 Protocol)
     "config",        # 설정 (모든 계층이 참조 가능)
     "utils",         # 공유 유틸리티 (모든 계층이 참조 가능)
-    "infrastructure",# 하이퍼바이저 어댑터, DB, 캐시, 보안, 외부 연동
-    "application",   # 유스케이스 (프로비저닝, 전원 제어, 인벤토리 조회)
-    "orchestration", # 워커/스케줄러 (인벤토리 동기화, 비동기 작업 실행)
+    "infrastructure",# 하이퍼바이저 어댑터, DB, 캐시, 보안, 저장소
+    "application",   # 유스케이스 (인벤토리 조회, 정규화, 메타데이터 관리)
+    "orchestration", # 수집 스케줄러/워커
     "interface",     # FastAPI 어댑터
     "entry",         # 진입점 (main.py)
 ]
@@ -46,25 +49,26 @@ MODULE_LAYER_MAP: dict[str, Layer] = {
     # domain — 엔티티, 값 객체, 포트(Protocol)
     "src.domain":                        "domain",
     "src.domain.resource":               "domain",   # VM, Host, Cluster, Datastore, Network
-    "src.domain.tenant":                 "domain",   # 테넌트, 프로젝트, 할당량
+    "src.domain.connection":             "domain",   # 하이퍼바이저 연결 정보
+    "src.domain.metadata":               "domain",   # 소유자·환경 등 포탈 부여 메타데이터
     "src.domain.auth":                   "domain",   # 사용자, 역할, 권한
-    "src.domain.task":                   "domain",   # 비동기 작업(Task) 상태 모델
+    "src.domain.history":                "domain",   # 변경 이력, 수집 이력
     "src.domain.audit":                  "domain",   # 감사 이벤트
-    "src.domain.ports":                  "domain",   # HypervisorConnector 등 Protocol 정의
+    "src.domain.ports":                  "domain",   # HypervisorInventoryReader 등 Protocol 정의
     # config / utils
     "src.config":                        "config",
     "src.utils":                         "utils",
     # infrastructure — 하이퍼바이저 어댑터 및 외부 시스템 연동
     "src.infrastructure":                "infrastructure",
-    "src.infrastructure.vcenter":        "infrastructure",   # pyVmomi 기반 vCenter 어댑터
-    "src.infrastructure.hyperv":         "infrastructure",   # WinRM/PowerShell 기반 Hyper-V 어댑터
+    "src.infrastructure.vcenter":        "infrastructure",   # pyVmomi 기반 vCenter 수집 어댑터
+    "src.infrastructure.hyperv":         "infrastructure",   # WinRM/WMI 기반 Hyper-V 수집 어댑터
     "src.infrastructure.db":             "infrastructure",
     "src.infrastructure.cache":          "infrastructure",
     "src.infrastructure.security":       "infrastructure",   # 자격증명 암호화, 토큰
     "src.infrastructure.repository":     "infrastructure",
     # application — 유스케이스 서비스
     "src.application":                   "application",
-    # orchestration — 워커/스케줄러
+    # orchestration — 수집 스케줄러/워커
     "src.orchestration":                 "orchestration",
     # interface / entry
     "src.api":                           "interface",
@@ -76,6 +80,9 @@ HYPERVISOR_ADAPTERS: tuple[str, ...] = (
     "src.infrastructure.vcenter",
     "src.infrastructure.hyperv",
 )
+
+# 커넥터 Protocol 정의 모듈 — 읽기 전용 검사 대상
+CONNECTOR_PORT_MODULE = "src.domain.ports"
 
 # ──────────────────────────────────────────────
 # 2. 허용 의존성 규칙
@@ -93,9 +100,31 @@ ALLOWED_DEPS: dict[Layer, set[Layer]] = {
     "entry":          {"domain", "config", "utils", "orchestration", "interface", "infrastructure"},
 }
 
+# ──────────────────────────────────────────────
+# 3. 읽기 전용 범위 규칙
+#    하이퍼바이저 자원을 변경하는 동작을 나타내는 메서드명 접두사.
+#    커넥터 Protocol과 어댑터의 public 메서드/함수에만 적용한다.
+# ──────────────────────────────────────────────
+
+FORBIDDEN_METHOD_PREFIXES: tuple[str, ...] = (
+    "create_", "delete_", "destroy_", "remove_",
+    "power_", "start_", "stop_", "restart_", "reboot_",
+    "suspend_", "resume_", "reset_", "shutdown_",
+    "modify_", "reconfigure_", "resize_", "rename_",
+    "migrate_", "relocate_", "clone_", "deploy_", "provision_",
+    "revert_", "attach_", "detach_", "mount_", "unmount_",
+)
+
+# 하이퍼바이저 자원을 변경하지 않는 정당한 메서드 (세션·수집 제어)
+ALLOWED_METHOD_NAMES: frozenset[str] = frozenset({
+    "start_session", "stop_session", "close_session", "reset_session",
+    "start_collection", "stop_collection",
+    "reset_connection", "remove_stale_cache",
+})
+
 
 # ──────────────────────────────────────────────
-# 3. 파일 → 계층 결정
+# 4. 파일 → 계층 결정
 # ──────────────────────────────────────────────
 
 def resolve_layer(module_path: str) -> Layer | None:
@@ -118,6 +147,13 @@ def resolve_adapter(module_path: str) -> str | None:
     return None
 
 
+def is_readonly_scope(module_path: str) -> bool:
+    """읽기 전용 메서드 검사 대상 모듈인지 판정한다."""
+    if module_path == CONNECTOR_PORT_MODULE or module_path.startswith(CONNECTOR_PORT_MODULE + "."):
+        return True
+    return resolve_adapter(module_path) is not None
+
+
 def file_to_module(file_path: Path, project_root: Path) -> str:
     """파일 경로를 모듈 경로로 변환한다."""
     rel = file_path.relative_to(project_root)
@@ -128,7 +164,7 @@ def file_to_module(file_path: Path, project_root: Path) -> str:
 
 
 # ──────────────────────────────────────────────
-# 4. Import 추출 (AST 기반)
+# 5. AST 분석
 # ──────────────────────────────────────────────
 
 @dataclass
@@ -138,12 +174,25 @@ class ImportInfo:
     statement: str
 
 
-def extract_imports(file_path: Path) -> list[ImportInfo]:
-    """파일에서 src.* import 문을 추출한다."""
+@dataclass
+class MethodInfo:
+    name: str
+    line: int
+    statement: str
+
+
+def _parse(file_path: Path) -> ast.Module | None:
     try:
         source = file_path.read_text(encoding="utf-8")
-        tree = ast.parse(source, filename=str(file_path))
-    except (SyntaxError, UnicodeDecodeError):
+        return ast.parse(source, filename=str(file_path))
+    except (SyntaxError, UnicodeDecodeError, OSError):
+        return None
+
+
+def extract_imports(file_path: Path) -> list[ImportInfo]:
+    """파일에서 src.* import 문을 추출한다."""
+    tree = _parse(file_path)
+    if tree is None:
         return []
 
     imports: list[ImportInfo] = []
@@ -166,21 +215,43 @@ def extract_imports(file_path: Path) -> list[ImportInfo]:
     return imports
 
 
+def extract_public_methods(file_path: Path) -> list[MethodInfo]:
+    """파일의 public 함수·메서드를 추출한다 (언더스코어 시작 제외)."""
+    tree = _parse(file_path)
+    if tree is None:
+        return []
+
+    methods: list[MethodInfo] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if node.name.startswith("_"):
+            continue
+        prefix = "async def" if isinstance(node, ast.AsyncFunctionDef) else "def"
+        methods.append(MethodInfo(
+            name=node.name,
+            line=node.lineno,
+            statement=f"{prefix} {node.name}(...)",
+        ))
+    return methods
+
+
 # ──────────────────────────────────────────────
-# 5. 위반 검사
+# 6. 위반 검사
 # ──────────────────────────────────────────────
 
 @dataclass
 class Violation:
     file: str
     line: int
-    from_layer: Layer
-    to_layer: Layer
-    from_module: str
-    to_module: str
-    statement: str
     severity: Literal["error", "warning"]
     reason: str
+    statement: str
+    kind: Literal["dependency", "readonly"] = "dependency"
+    from_layer: Layer | None = None
+    to_layer: Layer | None = None
+    from_module: str = ""
+    to_module: str = ""
 
 
 @dataclass
@@ -191,8 +262,8 @@ class CheckResult:
     allowed_imports: int = 0
 
 
-def check_file(file_path: Path, project_root: Path) -> list[Violation]:
-    """단일 파일의 의존성 규칙 위반을 검사한다."""
+def check_imports(file_path: Path, project_root: Path) -> list[Violation]:
+    """단일 파일의 계층 의존성 규칙 위반을 검사한다."""
     from_module = file_to_module(file_path, project_root)
     from_layer = resolve_layer(from_module)
     if from_layer is None:
@@ -208,62 +279,89 @@ def check_file(file_path: Path, project_root: Path) -> list[Violation]:
             continue
 
         to_adapter = resolve_adapter(imp.module)
+        common = dict(
+            file=rel_path,
+            line=imp.line,
+            statement=imp.statement,
+            kind="dependency",
+            from_layer=from_layer,
+            to_layer=to_layer,
+            from_module=from_module,
+            to_module=imp.module,
+        )
 
-        # 특화 규칙 1: 유스케이스가 특정 하이퍼바이저 어댑터를 직접 참조 금지
+        # 특화 규칙 A: 유스케이스가 특정 하이퍼바이저 어댑터를 직접 참조 금지
         if from_layer in ("application", "orchestration") and to_adapter is not None:
             violations.append(Violation(
-                file=rel_path,
-                line=imp.line,
-                from_layer=from_layer,
-                to_layer=to_layer,
-                from_module=from_module,
-                to_module=imp.module,
-                statement=imp.statement,
                 severity="error",
                 reason=(
                     f"{from_layer}이 하이퍼바이저 어댑터({to_adapter})에 직접 결합. "
-                    "src.domain.ports의 HypervisorConnector Protocol을 통해 주입받을 것"
+                    "src.domain.ports의 커넥터 Protocol을 통해 주입받을 것"
                 ),
+                **common,
             ))
             continue
 
-        # 특화 규칙 2: 하이퍼바이저 어댑터 간 교차 참조 금지
+        # 특화 규칙 B: 하이퍼바이저 어댑터 간 교차 참조 금지
         if from_adapter is not None and to_adapter is not None and from_adapter != to_adapter:
             violations.append(Violation(
-                file=rel_path,
-                line=imp.line,
-                from_layer=from_layer,
-                to_layer=to_layer,
-                from_module=from_module,
-                to_module=imp.module,
-                statement=imp.statement,
                 severity="error",
                 reason=(
                     f"하이퍼바이저 어댑터 교차 참조 ({from_adapter} → {to_adapter}). "
                     "공통 로직은 src.domain 또는 src.utils로 추출할 것"
                 ),
+                **common,
             ))
             continue
 
         allowed = ALLOWED_DEPS.get(from_layer, set())
         if to_layer not in allowed and to_layer != from_layer:
             violations.append(Violation(
-                file=rel_path,
-                line=imp.line,
-                from_layer=from_layer,
-                to_layer=to_layer,
-                from_module=from_module,
-                to_module=imp.module,
-                statement=imp.statement,
                 severity="error",
                 reason=f"{from_layer} → {to_layer} 의존은 Clean Architecture에서 금지",
+                **common,
             ))
 
     return violations
 
 
+def check_readonly_scope(file_path: Path, project_root: Path) -> list[Violation]:
+    """커넥터 Protocol·어댑터에 자원 변경 메서드가 정의되었는지 검사한다."""
+    module = file_to_module(file_path, project_root)
+    if not is_readonly_scope(module):
+        return []
+
+    rel_path = str(file_path.relative_to(project_root))
+    violations: list[Violation] = []
+
+    for method in extract_public_methods(file_path):
+        if method.name in ALLOWED_METHOD_NAMES:
+            continue
+        matched = next(
+            (p for p in FORBIDDEN_METHOD_PREFIXES if method.name.startswith(p)),
+            None,
+        )
+        if matched is None:
+            continue
+        violations.append(Violation(
+            file=rel_path,
+            line=method.line,
+            severity="error",
+            reason=(
+                f"읽기 전용 포탈은 자원 변경·제어 메서드를 정의할 수 없음 "
+                f"(금지 접두사 '{matched}', spec.md CST-01 / NFR-202). "
+                "조회가 목적이면 get_/list_/fetch_/collect_ 등으로 명명할 것"
+            ),
+            statement=method.statement,
+            kind="readonly",
+            from_module=module,
+        ))
+
+    return violations
+
+
 def check_project(project_root: Path) -> CheckResult:
-    """프로젝트 전체의 의존성 규칙을 검사한다."""
+    """프로젝트 전체의 아키텍처 규칙을 검사한다."""
     src_dir = project_root / "src"
     result = CheckResult()
 
@@ -271,15 +369,20 @@ def check_project(project_root: Path) -> CheckResult:
         return result
 
     for py_file in sorted(src_dir.rglob("*.py")):
+        # __init__.py는 re-export 목적이므로 의존성 검사에서 제외하되,
+        # 읽기 전용 메서드 검사는 모든 파일에 적용한다.
+        readonly_violations = check_readonly_scope(py_file, project_root)
+        result.violations.extend(readonly_violations)
+
         if py_file.name == "__init__.py":
-            # __init__.py는 re-export 목적이므로 같은 패키지 내 참조 허용
             continue
+
         result.checked_files += 1
         imports = extract_imports(py_file)
         result.total_imports += len(imports)
-        file_violations = check_file(py_file, project_root)
-        result.violations.extend(file_violations)
-        result.allowed_imports += len(imports) - len(file_violations)
+        import_violations = check_imports(py_file, project_root)
+        result.violations.extend(import_violations)
+        result.allowed_imports += len(imports) - len(import_violations)
 
     return result
 
@@ -305,7 +408,7 @@ def collect_layer_deps(project_root: Path) -> dict[tuple[Layer, Layer], int]:
 
 
 # ──────────────────────────────────────────────
-# 6. 출력
+# 7. 출력
 # ──────────────────────────────────────────────
 
 COLORS = {
@@ -322,43 +425,54 @@ LAYERS_ORDER: list[Layer] = [
     "application", "orchestration", "interface", "entry",
 ]
 
+KIND_LABEL = {"dependency": "계층 의존성", "readonly": "읽기 전용 범위"}
+
+
+def _print_violation(v: Violation, color: str, tag: str) -> None:
+    c = COLORS
+    print(f"  {c[color]}{tag}{c['reset']} {v.file}:{v.line}  ({KIND_LABEL[v.kind]})")
+    print(f"    {v.statement}")
+    if v.kind == "dependency":
+        print(f"    {c['cyan']}{v.from_layer}{c['reset']} -> {c['cyan']}{v.to_layer}{c['reset']}: {v.reason}")
+    else:
+        print(f"    {v.reason}")
+    print()
+
 
 def print_text_report(result: CheckResult, project_root: Path, verbose: bool = False) -> None:
     """텍스트 형식으로 결과를 출력한다."""
     c = COLORS
 
-    print(f"\n{c['bold']}=== Clean Architecture 의존성 규칙 검사 ==={c['reset']}\n")
+    print(f"\n{c['bold']}=== 아키텍처 규칙 검사 ==={c['reset']}\n")
 
     if not (project_root / "src").is_dir():
         print(f"  {c['yellow']}src/ 디렉토리가 없습니다. 구현 시작 전이면 정상입니다.{c['reset']}\n")
         return
 
+    errors = [v for v in result.violations if v.severity == "error"]
+    warnings = [v for v in result.violations if v.severity == "warning"]
+    readonly_errors = [v for v in errors if v.kind == "readonly"]
+
     print(f"  검사 파일: {result.checked_files}개")
     print(f"  총 import: {result.total_imports}개")
     print(f"  허용 import: {result.allowed_imports}개")
-
-    errors = [v for v in result.violations if v.severity == "error"]
-    warnings = [v for v in result.violations if v.severity == "warning"]
-
-    print(f"  {c['red']}위반 (error): {len(errors)}개{c['reset']}")
+    print(f"  {c['red']}위반 (error): {len(errors)}개{c['reset']}"
+          f"  (읽기 전용 범위 위반 {len(readonly_errors)}개 포함)")
     print(f"  {c['yellow']}경고 (warning): {len(warnings)}개{c['reset']}")
     print()
 
-    for title, group, color, tag in (
-        ("--- ERRORS ---", errors, "red", "[ERROR]"),
-        ("--- WARNINGS ---", warnings, "yellow", "[WARN]"),
-    ):
-        if not group:
-            continue
-        print(f"{c[color]}{c['bold']}{title}{c['reset']}\n")
-        for v in group:
-            print(f"  {c[color]}{tag}{c['reset']} {v.file}:{v.line}")
-            print(f"    {v.statement}")
-            print(f"    {c['cyan']}{v.from_layer}{c['reset']} -> {c['cyan']}{v.to_layer}{c['reset']}: {v.reason}")
-            print()
+    if errors:
+        print(f"{c['red']}{c['bold']}--- ERRORS ---{c['reset']}\n")
+        for v in errors:
+            _print_violation(v, "red", "[ERROR]")
+
+    if warnings:
+        print(f"{c['yellow']}{c['bold']}--- WARNINGS ---{c['reset']}\n")
+        for v in warnings:
+            _print_violation(v, "yellow", "[WARN]")
 
     if not errors and not warnings:
-        print(f"  {c['green']}모든 의존성이 Clean Architecture 규칙을 준수합니다.{c['reset']}\n")
+        print(f"  {c['green']}모든 아키텍처 규칙을 준수합니다.{c['reset']}\n")
 
     # 계층 의존성 요약 매트릭스
     if verbose:
@@ -380,6 +494,9 @@ def print_text_report(result: CheckResult, project_root: Path, verbose: bool = F
                     row += f"{c['red']}{count:<16}{c['reset']}"
             print(row)
         print()
+        print("  주의: 매트릭스는 계층 단위 집계이므로 어댑터 직접 참조·읽기 전용 위반은")
+        print("        초록으로 보일 수 있습니다. 개별 판정은 ERRORS 목록을 기준으로 하세요.")
+        print()
 
 
 def print_json_report(result: CheckResult) -> None:
@@ -391,12 +508,16 @@ def print_json_report(result: CheckResult) -> None:
             "allowed_imports": result.allowed_imports,
             "errors": len([v for v in result.violations if v.severity == "error"]),
             "warnings": len([v for v in result.violations if v.severity == "warning"]),
+            "readonly_errors": len([
+                v for v in result.violations if v.severity == "error" and v.kind == "readonly"
+            ]),
         },
         "violations": [
             {
                 "file": v.file,
                 "line": v.line,
                 "severity": v.severity,
+                "kind": v.kind,
                 "from_layer": v.from_layer,
                 "to_layer": v.to_layer,
                 "from_module": v.from_module,
@@ -411,12 +532,12 @@ def print_json_report(result: CheckResult) -> None:
 
 
 # ──────────────────────────────────────────────
-# 7. CLI
+# 8. CLI
 # ──────────────────────────────────────────────
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Clean Architecture 계층 의존성 규칙 위반 탐지",
+        description="계층 의존성 + 읽기 전용 범위 규칙 위반 탐지",
     )
     parser.add_argument("--verbose", "-v", action="store_true", help="상세 출력")
     parser.add_argument("--json", action="store_true", help="JSON 출력")
