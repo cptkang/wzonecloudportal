@@ -416,11 +416,11 @@ ITIL CMDB의 구성 항목(CI) 속성 개념을 기준으로 정의한다.
 | CST-02 | 게스트 OS·IP 정보는 VMware Tools / Hyper-V 통합 서비스에 의존하므로 100% 수집을 보장할 수 없다 |
 | CST-03 | Hyper-V는 vCenter와 같은 중앙 관리 지점이 없으므로, SCVMM 부재 시 호스트·클러스터 단위로 개별 연결해야 한다 |
 | CST-04 | 개발·테스트는 목(mock) 커넥터를 사용하며 운영 하이퍼바이저에 연결하지 않는다 |
-| CST-08 | 하이퍼바이저 접속 계정이 AD 통합 계정인 경우 반복 인증 실패로 **계정이 잠길 수 있다.** 인증 실패 시 자동 재시도를 중단해야 한다 (FR-114) |
-| CST-09 | Hyper-V 연결은 WinRM 인증 방식(NTLM/Kerberos/CredSSP)이 환경에 따라 다르며, 도메인 미가입 호스트나 이중 홉 시나리오에서는 추가 설정(TrustedHosts, CredSSP 활성화)이 대상 서버에 필요할 수 있다 |
-| CST-05 | `[TODO]` 네트워크 제약: 포탈 서버 → vCenter(443) / Hyper-V(WinRM 5985·5986) 방화벽 허용 필요 |
-| CST-06 | `[TODO]` 배포 환경 (OS, 컨테이너 여부, 폐쇄망 여부) |
-| CST-07 | `[TODO]` Hyper-V 환경의 SCVMM 도입 여부 — 도입 시 수집 방식이 달라짐 |
+| CST-05 | 하이퍼바이저 접속 계정이 AD 통합 계정인 경우 반복 인증 실패로 **계정이 잠길 수 있다.** 인증 실패 시 자동 재시도를 중단해야 한다 (FR-114) |
+| CST-06 | Hyper-V 연결은 WinRM 인증 방식(NTLM/Kerberos/CredSSP)이 환경에 따라 다르며, 도메인 미가입 호스트나 이중 홉 시나리오에서는 추가 설정(TrustedHosts, CredSSP 활성화)이 대상 서버에 필요할 수 있다 |
+| CST-07 | `[TODO]` 네트워크 제약: 포탈 서버 → vCenter(443) / Hyper-V(WinRM 5985·5986) 방화벽 허용 필요 |
+| CST-08 | `[TODO]` 배포 환경 (OS, 컨테이너 여부, 폐쇄망 여부) |
+| CST-09 | `[TODO]` Hyper-V 환경의 SCVMM 도입 여부 — 도입 시 수집 방식이 달라짐 |
 
 ---
 
@@ -439,16 +439,21 @@ ITIL CMDB의 구성 항목(CI) 속성 개념을 기준으로 정의한다.
 
 ## 7. 조사 근거
 
-이 요건 정의서는 아래 자료 조사를 근거로 작성했습니다.
+이 요건 정의서는 CMDB·ITIL 원칙, vSphere/Hyper-V 수집 API, 실무 인벤토리 도구(RVTools)의 표준 속성 집합,
+그리고 가상화 환경의 알려진 데이터 수집 제약에 대한 조사를 근거로 작성했습니다.
 
-- CMDB 구성 항목(CI)·속성 정의 및 중복 방지 원칙 — [Atlassian: What Is CMDB](https://www.atlassian.com/itsm/it-asset-management/cmdb), [Cloudaware: CMDB CI Explained](https://cloudaware.com/blog/cmdb-ci/), [ITIL CMDB 가이드](https://cloudaware.com/blog/itil-cmdb/)
-- CI 식별 규칙·조정 규칙(다중 수집 소스의 중복·충돌 처리) — [ServiceNow: CMDB Identification & Reconciliation](https://www.servicenow.com/community/cmdb-articles/cmdb-identification-reconciliation/ta-p/2301712)
-- vSphere 인벤토리 표준 속성 집합(vInfo/vCPU/vMemory/vDisk/vNetwork/vHost/vDatastore) — [RVTools 4 개요](https://4sysops.com/archives/whats-new-in-rvtools-4-for-vmware-vsphere/), [RVTools 데이터 분석](https://sizing-workshop.readthedocs.io/en/latest/datacollection/rvtools/rvtools.html)
-- 대규모 환경의 효율적 수집(PropertyCollector·ContainerView·RetrievePropertiesEx 페이징) — [Broadcom: Using the PropertyCollector with RetrievePropertiesEx](https://techdocs.broadcom.com/us/en/vmware-cis/vsphere/vsphere-sdks-tools/8-0/web-services-sdk-programming-guide/property-collector/using-the-propertycollector-with-retrievepropertiesex.html), [VMware: Efficient Data Retrieval with PropertyCollector and ContainerView](https://blogs.vmware.com/cloud-foundation/2024/10/21/efficient-data-retrieval-with-vi-json-api-propertycollector-and-containerview/)
-- pyVmomi 인벤토리 객체 수집 범위 — [pyVmomi tutorial: core vCenter inventory objects](https://vthinkbeyondvm.com/pyvmomi-tutorial-how-to-get-all-the-core-vcenter-server-inventory-objects-and-play-around/)
-- VMware Tools 미설치 시 게스트 IP·OS 수집 제약 — [Broadcom KB: VMware Tools 상태 이슈](https://knowledge.broadcom.com/external/article/343269/vsphere-client-reports-the-status-of-vmw.html), [open-vm-tools: Linux 게스트 IP origin 미설정](https://github.com/vmware/open-vm-tools/issues/694)
-- Hyper-V 게스트 정보 수집(KVP: OSName·OSVersion·FQDN·NetworkAddressIPv4) 및 WMI 조회 — [Microsoft Learn: Get-VMNetworkAdapter](https://learn.microsoft.com/en-us/powershell/module/hyper-v/get-vmnetworkadapter?view=windowsserver2025-ps), [Microsoft Learn: Hyper-V WMI 네트워크 어댑터 조회](https://learn.microsoft.com/en-us/answers/questions/135604/hyper-v-fetch-network-adapter-related-information(), [Retrieving the IP Address Of A VM In Hyper-V](https://learn.microsoft.com/hu-hu/archive/blogs/taylorb/retrieving-the-ip-address-of-a-vm-in-hyper-v)
-- Hyper-V 다중 호스트·클러스터 관리 방식(SCVMM 유무에 따른 차이) — [TechTarget: SCVMM vs Hyper-V Manager](https://www.techtarget.com/searchitoperations/tip/SCVMM-vs-Hyper-V-Manager-Which-tasks-are-best-suited-to-each), [Veeam: SCVMM, Cluster, or Standalone](https://community.veeam.com/blogs-and-podcasts-57/scvmm-cluster-or-standalone-what-changes-when-you-pick-each-one-13215)
-- 다중 vCenter 통합 조회 개념(Enhanced Linked Mode) — [O'Reilly: Managing inventory via vCenter](https://www.oreilly.com/library/view/vmware-vsphere-5-5/9781784398750/ch02s09.html)
-- 좀비 VM·고아 VMDK·오래된 스냅샷 식별 및 용량 회수 리포팅 — [Broadcom KB: Zombie/Orphaned disks 식별](https://knowledge.broadcom.com/external/article/383876/how-to-identify-zombie-orphaned-disks-i.html), [SolarWinds: VM Sprawl Control](https://www.solarwinds.com/virtualization-manager/use-cases/vm-sprawl-control), [Zombie VM 정의](https://www.ituonline.com/tech-definitions/what-is-a-zombie-vm/)
-- 구성 드리프트 감지·변경 이력·감사 추적 요건 — [Microsoft Learn: Azure Change Tracking and Inventory](https://learn.microsoft.com/en-us/azure/azure-change-tracking-inventory/overview-monitoring-agent), [Open-AudIT: Configuration Management & Change Detection](https://open-audit.com/network-configuration-management/)
+**조사 내용 전문·출처·구현 참고 자료는 [`docs/00_research_notes.md`](docs/00_research_notes.md) 에 있습니다.**
+그 문서의 §10 추적표에서 **각 요건이 어떤 조사 결과에서 나왔는지 역참조**할 수 있으며,
+§11에는 구현 전 반드시 재검증해야 할 미검증 항목이 정리되어 있습니다.
+
+| 조사 주제 | 이 문서에 반영된 부분 |
+|---|---|
+| CMDB 구성 항목(CI)·속성·중복 방지 원칙 | §2 속성 카탈로그, FR-303, FR-307 |
+| CI 식별 규칙·조정 규칙 (다중 소스 충돌 처리) | FR-302, FR-304, FR-110 |
+| RVTools 표준 속성 집합 | §2.2~§2.6 속성 카탈로그 전체 |
+| PropertyCollector·ContainerView 페이징 수집 | FR-203, NFR-101, NFR-107 |
+| VMware Tools / KVP 게스트 정보 의존성 | CST-02, FR-501, FR-504, FR-505 |
+| Hyper-V WMI·KVP 수집 경로, WinRM 인증 방식 | §2.2 Hyper-V 출처 열, FR-103, CST-06 |
+| 다중 vCenter(ELM)·SCVMM 관리 방식 | FR-102, FR-308, CST-03, CST-09 |
+| 좀비 VM·고아 VMDK·오래된 스냅샷 | FR-803, FR-804, FR-805 |
+| 구성 드리프트·변경 이력·감사 추적 | FR-7xx, FR-1004 |

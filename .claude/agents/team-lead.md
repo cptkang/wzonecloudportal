@@ -330,6 +330,8 @@ Wave 단위로 완료된 모듈은 **전체 구현 완료를 기다리지 않고
 ## 프로젝트 컨텍스트
 - 작업 디렉토리: 현재 디렉토리 (wzonecloudportal/)
 - 요건 정의서: spec.md — **읽기 전용 범위(§1.2, CST-01)를 항상 확인할 것**
+- **조사 노트: docs/00_research_notes.md** — 요건의 근거, 수집 API 참고, 미검증 항목.
+  서브에이전트가 요건 의도를 잘못 해석하면 §10 추적표를 근거로 지적할 것
 - 요구사항 문서: docs/01_requirements.md
 - 계획서 디렉토리: plans/ (영역별 .md 계획서)
 - 스킬 활용 계획: plans/00-claude-skills-plugins.md

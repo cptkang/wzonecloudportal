@@ -22,6 +22,9 @@ tools:
 커넥터 Protocol에는 조회 메서드만 정의하며, 이는 `scripts/arch_check.py`가 자동 검사합니다.
 
 ## 작업 절차
+0. **`docs/00_research_notes.md`를 먼저 읽습니다.** 이미 조사된 내용을 중복 조사하지 말고,
+   §11의 **미검증 항목을 우선 조사 대상**으로 삼으세요. 새로 조사한 내용은 이 문서에 추가하고
+   §10 추적표와 §12 출처를 갱신합니다.
 1. docs/01_requirements.md와 spec.md §2 속성 카탈로그를 읽고 요구사항을 파악합니다.
 2. 기술 스택(FastAPI, pyVmomi, pypsrp/WinRM, SQLAlchemy, Redis)의 적합성을 검토합니다.
 3. **vCenter와 Hyper-V의 수집 API·자원 모델 차이를 조사**하고 공통 모델로 정규화하는 매핑을 설계합니다.
