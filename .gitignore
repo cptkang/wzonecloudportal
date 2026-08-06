@@ -1,0 +1,52 @@
+# 환경변수
+.env
+.env.local
+.encenv
+
+# 자격증명 · 인증서 (하이퍼바이저 접속 정보 유출 방지)
+*.pem
+*.key
+*.pfx
+*.p12
+credentials.json
+secrets.yaml
+secrets.yml
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+
+# DB
+*.db
+*.sqlite3
+
+# 로그
+logs/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 캐시
+.cache/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# 가상환경
+venv/
+.venv/
+env/
+temp/
