@@ -117,28 +117,58 @@ pydantic-settings 기반. **`.env`의 `list`/`dict` 타입 필드는 JSON 배열
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_prefix="PORTAL_")
 
-    # 서버
+    # ── 서버 ───────────────────────────────
     api_host: str = "0.0.0.0"
     api_port: int = 8080
     log_level: str = "INFO"
 
-    # DB / 캐시
+    # ── DB / 캐시 ──────────────────────────
     database_url: str
     redis_url: str = "redis://localhost:6379/0"
+    db_pool_size: int = 10
+    db_max_overflow: int = 20
 
-    # 보안
+    # ── 인증 (계획 09) ─────────────────────
     jwt_secret: SecretStr
     jwt_expire_minutes: int = 480
-    credential_encryption_key: SecretStr      # 계획 10, NFR-208
+    max_failed_login_attempts: int = 5
+    lockout_minutes: int = 15
+    bootstrap_admin_username: str | None = None      # 최초 기동 시에만 사용
+    bootstrap_admin_password: SecretStr | None = None
 
-    # 수집 (미확정 요건의 임시 기본값 — plans/README.md §5)
+    # ── 자격증명 암호화 (계획 10, NFR-208) ──
+    credential_encryption_key: SecretStr             # base64 32바이트
+    credential_key_version: int = 1
+    credential_legacy_keys: dict[str, str] = {}      # 키 교체 중에만 사용
+
+    # ── 수집 (계획 06) ─────────────────────
     default_collection_interval_minutes: int = 360
     collection_timeout_seconds: int = 60
     collection_max_retries: int = 3
     collection_max_concurrent_connections: int = 4
-    stale_resource_grace_days: int = 7
-    history_retention_days: int = 365
-    data_freshness_warning_hours: int = 12
+    collection_batch_size: int = 500
+    collection_page_size: int = 500                  # vCenter maxObjects
+    missing_ratio_alert_threshold: float = 0.5       # FR-111
+
+    # ── 보존·품질 (계획 12) ────────────────
+    stale_resource_grace_days: int = 7               # FR-307 [TODO]
+    history_retention_days: int = 365                # FR-706 [TODO]
+    audit_retention_days: int = 1095                 # 감사는 별도 정책
+    data_freshness_warning_hours: int = 12           # FR-502
+
+    # ── 리포트 (계획 13) ───────────────────
+    export_row_limit: int = 50_000
+    idle_candidate_days: int = 30                    # FR-804 [TODO]
+    stale_snapshot_days: int = 30                    # FR-803
+
+    # ── 외부 API (계획 08) ─────────────────
+    api_rate_limit_per_minute: int = 60
+```
+
+**`credential_legacy_keys`는 `dict` 타입이므로 `.env`에 JSON으로 써야 한다** (Known Mistakes 1번):
+
+```bash
+PORTAL_CREDENTIAL_LEGACY_KEYS={"1":"base64key..."}
 ```
 
 **금지**: `model_post_init`에서 `os.getenv()`를 쓰지 않는다. `.env` 값이 `os.environ`에 주입되지 않아 systemd 환경에서 누락된다 (Known Mistakes 3번). 필요하면 `AliasChoices`를 사용한다.
