@@ -12,8 +12,9 @@
 |---|---|---|
 | 계층 격리 + 어댑터 결합 + **읽기 전용 범위** 강제 | **arch-check** (커스텀) | 최상 |
 | 자격증명 보호·조회 범위 격리 | **security-review** | 최상 |
-| FastAPI 조회 API + 포탈 UI | **Playwright MCP** | 높음 |
-| 자원 현황 대시보드 | **dataviz** | 중간 |
+| **웹 UI 화면 시안 제작 (구현 전 확정)** | **artifact-design** | 높음 |
+| FastAPI 조회 API + 포탈 UI E2E | **Playwright MCP** | 높음 |
+| 자원 현황 대시보드 차트 | **dataviz** | 중간 |
 | 인벤토리 Excel 내보내기 | **xlsx** | 중간 |
 | 아키텍처·수집 흐름 문서화 | **mermaid-tools** | 중간 |
 | 코드 품질·리뷰 | **code-review**, **simplify** | 중간 |
@@ -122,7 +123,29 @@ browser_evaluate         → API 응답 JSON 검증
 
 **금지**: 운영 하이퍼바이저 연결 테스트
 
-### 3.2 dataviz
+### 3.2 artifact-design — 화면 시안 제작 (Wave 0)
+
+**용도**: 웹 UI 화면 시안을 Claude Artifacts로 제작할 때의 페이지 설계 원칙과 시각 언어
+
+`spec.md` FR-1212 / 계획 11 Part A가 규정한 **구현 전 시안 확정** 프로세스의 핵심 도구다.
+
+**활용 시나리오**:
+- 자원 목록·상세·대시보드·연결 관리 화면 시안 제작
+- 실제 데이터 분포를 반영한 목 데이터로 **동작하는** 화면 생성 (클릭·필터·정렬)
+- URL로 공유하여 운영팀 검토 → 피드백 반영 → 동일 URL 재게시
+- 확정된 시안에서 디자인 토큰·컴포넌트 규격 추출 → `docs/03_design_system.md`
+
+**호출**: 시안 작성 **전에** 스킬을 로드한다. 코드를 먼저 쓰고 나중에 로드하면 의미가 없다.
+
+**시안에서 반드시 확인할 것** (계획 11 §3.1):
+- "수집 불가" 표시가 100행 중에서도 눈에 구분되는가 (FR-1204)
+- 긴 VM 이름에서 컬럼이 깨지지 않는가
+- 다크 모드에서 상태 색상 대비가 충분한가 (FR-1211)
+- 경고 배지가 여러 개 겹칠 때 읽히는가 (NFR-407)
+
+**주의**: 시안의 목 데이터에 **실제 서버명·IP를 쓰지 않는다.** Artifact URL이 공유될 수 있다.
+
+### 3.3 dataviz
 
 **용도**: 자원 현황 대시보드 차트 설계
 
@@ -135,7 +158,7 @@ browser_evaluate         → API 응답 JSON 검증
 
 **적용 Wave**: Wave 4 (UI)
 
-### 3.3 xlsx
+### 3.4 xlsx
 
 **용도**: 인벤토리 Excel 내보내기 기능 검증
 
@@ -146,7 +169,7 @@ browser_evaluate         → API 응답 JSON 검증
 
 **적용 Wave**: Wave 4
 
-### 3.4 mermaid-tools
+### 3.5 mermaid-tools
 
 **용도**: 아키텍처·수집 흐름 다이어그램 생성
 
@@ -172,6 +195,7 @@ browser_evaluate         → API 응답 JSON 검증
 
 | Wave | 주요 작업 | 권장 스킬 |
 |---|---|---|
+| **Wave 0 (화면 디자인)** | 화면 시안 제작·검토·토큰 확정 (계획 11 Part A) | **artifact-design**, **dataviz**(대시보드 시안) |
 | Wave 1 (도메인·보안·저장소) | 자원 모델, Protocol, 자격증명 암호화, 저장소 | **arch-check**(읽기 전용 검사), **security-review**, code-review |
 | Wave 2 (수집 어댑터) | vCenter/Hyper-V 어댑터 | **arch-check**(교차 참조 + 읽기 전용), code-review |
 | Wave 3 (유스케이스·워커) | 조회·검색, 수집 스케줄러, 변경 이력 | arch-check, security-review, simplify |
@@ -188,9 +212,23 @@ collectorinfra의 계획서에는 아래 스킬이 포함되어 있었으나, �
 | 스킬 | collectorinfra에서의 용도 | 이 프로젝트에서의 대체 |
 |---|---|---|
 | `webapp-testing` | Playwright 기반 E2E | **Playwright MCP 도구 직접 사용** (기능 동일) |
-| `frontend-design` | UI 디자인 시스템 | Wave 4에서 필요 시 설치 검토. 차트는 `dataviz`로 대체 |
 | `mcp-builder` | MCP 서버 도구 정의 | 이 프로젝트에는 MCP 서버 구성요소가 없어 제외 |
 | `skill-creator` | 커스텀 스킬 생성 | 반복 작업 확인 시 설치 검토 |
+
+### 6.1 frontend-design — 설치 검토 대상
+
+Anthropic 공식 플러그인으로 **마켓플레이스(`claude-plugins-official`)에 캐시되어 있으나 현재 세션에 활성화되어 있지 않다.**
+"일반적인 AI 느낌을 피한 프로덕션급 프론트엔드 인터페이스 생성"을 목적으로 하며,
+Claude가 프론트엔드 작업 시 자동으로 사용한다.
+
+| 항목 | 판단 |
+|---|---|
+| 언제 필요한가 | 계획 11 Part B (`static/` 구현) 착수 시점 |
+| 없어도 되는가 | 된다. Part A에서 `artifact-design`으로 디자인을 확정하므로 구현은 그 규격을 따르기만 하면 된다 |
+| 설치하면 무엇이 나아지나 | 시안 제작(Part A)과 구현(Part B) 모두에서 코드 품질·시각적 완성도 |
+
+**판단**: Part A를 `artifact-design`으로 진행하고, Part B 착수 시 팀 리드가 설치 여부를 사용자에게 제안한다.
+디자인이 이미 확정된 뒤이므로 설치하지 않아도 계획대로 구현할 수 있다.
 
 ---
 
@@ -202,6 +240,7 @@ collectorinfra의 계획서에는 아래 스킬이 포함되어 있었으나, �
 | **security-review** | `/security-review` | 보안 점검 |
 | **code-review** | `/code-review` | 코드 리뷰 |
 | **simplify** | `/simplify` | 복잡도·중복 개선 |
+| **artifact-design** | **시안 작성 전 로드** | 화면 시안 설계 (Wave 0) |
 | **Playwright MCP** | `browser_*` 도구 직접 호출 | E2E 테스트 |
 | **dataviz** | 차트 작성 전 로드 | 차트 설계 |
 | **xlsx** | Excel 작업 시 자동 트리거 | 스프레드시트 검증 |

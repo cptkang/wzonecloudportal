@@ -21,6 +21,7 @@
 | 파일 | 영역 | Wave | 계층 | 주요 요건 |
 |---|---|---|---|---|
 | [01-project-structure.md](01-project-structure.md) | 디렉토리·설정·환경변수 | 0 | 전체 | — |
+| [11-web-ui.md](11-web-ui.md) **Part A** | **화면 시안 제작·디자인 확정** | **0** | — | FR-1207~1212 |
 | [02-domain-model.md](02-domain-model.md) | 자원 엔티티, 정규화 매핑, CI 식별 | 1 | domain | FR-301·302·304, §2 |
 | [03-inventory-reader-port.md](03-inventory-reader-port.md) | 커넥터 Protocol, 수집 결과 계약 | 1 | domain | FR-301, FR-501, NFR-202 |
 | [10-security-audit.md](10-security-audit.md) | 자격증명 암호화, 감사 로그 | 1 | infrastructure | NFR-203·208·209, FR-1004 |
@@ -31,15 +32,17 @@
 | [07-inventory-query.md](07-inventory-query.md) | 조회·검색·IP역조회, 메타데이터 | 3 | application | FR-4xx, FR-5xx, FR-6xx |
 | [12-change-history.md](12-change-history.md) | 변경 이력, 수명주기, 데이터 품질 | 3 | application | FR-7xx, FR-501~505 |
 | [08-api-server.md](08-api-server.md) | FastAPI 엔드포인트, 연결 관리 API | 4 | interface | FR-1xx, FR-11xx |
-| [11-web-ui.md](11-web-ui.md) | 포탈 화면, 대시보드 | 4 | interface | FR-9xx, FR-103·109 |
+| [11-web-ui.md](11-web-ui.md) **Part B** | 포탈 화면 구현, 대시보드 | 4 | interface | FR-12xx, FR-9xx |
 | [13-report-export.md](13-report-export.md) | 리포트, Excel/CSV 내보내기 | 4 | application·interface | FR-8xx |
 | [00-claude-skills-plugins.md](00-claude-skills-plugins.md) | Claude Code 스킬 활용 | — | — | — |
 
 ## 1. 의존 관계 그래프
 
 ```
-Wave 0  01-project-structure (디렉토리·설정 스켈레톤)
-             │
+Wave 0  ┌─ 01-project-structure (디렉토리·설정 스켈레톤)
+        │
+        └─ 11-web-ui Part A (화면 시안 → 검토 → 디자인 토큰 확정)
+             │        └─ 백엔드와 병렬 진행. Wave 4 이전에만 끝나면 된다
              ▼
 Wave 1  ┌─ 02-domain-model ──┬─ 03-inventory-reader-port
         ├─ 10-security-audit │
@@ -57,9 +60,13 @@ Wave 3  ┌─ 06(스케줄러 부분)
              │
              ▼
 Wave 4  ┌─ 08-api-server
-        ├─ 11-web-ui
+        ├─ 11-web-ui Part B ◄── docs/03_design_system.md (Wave 0 산출물)
         └─ 13-report-export
 ```
+
+**Wave 0의 디자인은 백엔드 구현과 무관하므로 전 과정과 병렬로 진행한다.**
+다만 **Wave 4 착수 전에는 반드시 확정**되어야 한다. 시안 없이 화면을 만들면 재작업이 발생하고,
+목록에 노출할 필드가 정해지지 않아 API 응답 형태도 확정할 수 없다.
 
 **Wave 병렬 실행**: 같은 Wave 내 계획서는 담당 디렉토리가 겹치지 않으므로 worktree 격리로 동시 구현한다.
 공유 파일(`src/config.py`, `src/domain/ports.py`, `pyproject.toml`)은 Wave 종료 후 팀 리드가 통합한다.
@@ -70,8 +77,9 @@ Wave 4  ┌─ 08-api-server
 
 | spec Phase | 완료 기준 | 해당 Wave |
 |---|---|---|
+| Phase 0 | 주요 화면 시안 승인, 디자인 토큰 확정 | Wave 0 (11 Part A) |
 | Phase 1 | 다수 vCenter·Hyper-V에서 VM 목록과 필수 속성이 통합 조회됨 | Wave 0~3 (07의 기본 조회까지) |
-| Phase 2 | IP로 VM을 1초 내 찾을 수 있음 | Wave 3~4 (07 검색 + 08 API + 11 UI) |
+| Phase 2 | 브라우저에서 IP로 VM을 1초 내 찾을 수 있음 | Wave 3~4 (07 검색 + 08 API + 11 Part B) |
 | Phase 3 | 소유자 정보가 재수집에도 보존되고 변경 이력이 남음 | Wave 3~4 (07 메타데이터 + 12) |
 | Phase 4 | 스냅샷·유휴 자원 리포트와 Excel 내보내기 동작 | Wave 4 (13) |
 
@@ -158,6 +166,7 @@ PortalError
 | FR-9xx 대시보드 | 11, 13(집계 쿼리) |
 | FR-10xx 인증·권한·감사 | 09, 10(감사 로그) |
 | FR-11xx 외부 API | 08 |
+| FR-12xx 웹 UI | 11 (Part A 디자인 + Part B 구현) |
 | NFR-1xx 성능 | 06(인덱스), 07(쿼리) |
 | NFR-2xx 보안 | 09, 10 |
 | NFR-3xx 안정성 | 06 |

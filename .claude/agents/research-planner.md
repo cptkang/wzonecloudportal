@@ -52,6 +52,7 @@ tools:
 | 계획 영역 | 스킬 | 참조 내용 |
 |---|---|---|
 | 전체 아키텍처 | **arch-check** | `.claude/skills/arch-check.md`의 계층 규칙과 특화 규칙 3개를 계획에 반영 |
+| 웹 UI 설계 | **artifact-design** | 화면 시안 제작 원칙. 구현 전 시안 확정 프로세스(FR-1212) |
 | 대시보드 설계 | **dataviz** | 자원 현황 차트 유형·색상 체계 선택 |
 | 인벤토리 내보내기 | **xlsx** | Excel 출력 구조 설계 |
 | 아키텍처 문서화 | **mermaid-tools** | 계층 구조·수집 흐름 다이어그램 작성 |
@@ -86,7 +87,7 @@ plans/ 디렉토리에 영역별 .md 파일로 분리 작성:
 | `plans/08-api-server.md` | FastAPI 조회 엔드포인트, 외부 연동 API, 요청/응답 스키마 | 4 |
 | `plans/09-auth-rbac.md` | 인증, 역할, 조회 범위 제한 | 2 |
 | `plans/10-security-audit.md` | 자격증명 암호화, 감사 로그 | 1 |
-| `plans/11-web-ui.md` | 포탈 화면 구성, 자원 목록/상세, 대시보드 | 4 |
+| `plans/11-web-ui.md` | **Part A**: 화면 시안 제작·디자인 확정 (artifact-design) / **Part B**: 포탈 화면 구현 | 0·4 |
 | `plans/12-change-history.md` | 속성 변경 감지·이력, 수명주기, 데이터 품질 표시 | 3 |
 | `plans/13-report-export.md` | 리포트 설계, Excel/CSV 내보내기 | 4 |
 

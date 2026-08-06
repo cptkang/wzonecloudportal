@@ -43,8 +43,9 @@ tools:
 | 3 | 조회·검색·메타데이터 유스케이스 | `src/application/` |
 | 3 | 수집 스케줄러 | `src/orchestration/` |
 | 3 | 변경 이력·데이터 품질 | `src/application/`, `src/domain/history.py` |
+| 0 | **화면 시안·디자인 시스템** | `docs/03_design_system.md` (계획 11 Part A) |
 | 4 | FastAPI 라우터·스키마 | `src/api/` |
-| 4 | 포탈 UI | `static/` |
+| 4 | 포탈 UI | `static/` (계획 11 Part B) |
 | 4 | 리포트·내보내기 | `src/application/`, `src/api/` |
 | 공통 | 설정, 진입점 | `src/config.py`, `src/main.py` |
 
@@ -104,10 +105,20 @@ domain → config/utils → infrastructure → application → orchestration →
 ### 조건부: 작업 영역에 따라
 | 작업 영역 | 스킬 | 활용 방법 |
 |---|---|---|
+| **화면 시안 제작 (Wave 0)** | **artifact-design** | **시안 작성 전 로드.** 계획 11 Part A |
 | Excel 인벤토리 내보내기 | **xlsx** | 출력 파일 구조·서식 검증 |
 | 대시보드 차트 | **dataviz** | 차트 유형·색상 팔레트 선택 |
 | `static/` 화면 구현 후 | **Playwright MCP** | 화면 렌더링·인터랙션 확인 |
 | 아키텍처 문서 다이어그램 | **mermaid-tools** | 다이어그램 생성 |
+
+### 웹 UI 구현 시 (Wave 4, 계획 11 Part B)
+
+- **`docs/03_design_system.md`의 토큰·컴포넌트 규격을 따른다.** 화면마다 색상·간격을 개별 정의하지 않는다 (NFR-406)
+- 이 문서가 없으면 구현을 시작하지 말고 팀 리드에게 보고한다. Wave 0 디자인이 선행되어야 한다
+- **자원을 변경하는 UI 요소를 만들지 않는다** (FR-1206) — 전원 버튼, VM 삭제, 스냅샷 조작
+- **"값 없음"·"수집 불가"·"해당 없음"을 서로 다르게 표시한다** (FR-1204). 이 프로젝트 UI의 가장 중요한 규칙이다
+- 색상만으로 상태를 구분하지 않는다. 아이콘·텍스트를 병기한다 (FR-1211)
+- 대량 목록을 클라이언트에서 전부 로드하지 않는다. 서버 페이징을 쓴다 (FR-1205)
 
 ## 코드 품질 규칙
 - 타입 힌트를 모든 함수에 사용하세요.

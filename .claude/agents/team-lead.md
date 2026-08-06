@@ -95,6 +95,10 @@ requirements-analyst와 research-planner는 둘 다 spec.md만 읽으므로 **�
 plans/ 계획서의 의존 관계에 따라 **독립 모듈을 병렬로 구현**합니다.
 
 ```
+[Wave 0: 화면 디자인 — 백엔드와 병렬 진행, Wave 4 착수 전 완료]
+└─ design-ui:      11-web-ui Part A (화면 시안 → 검토 → docs/03_design_system.md)
+                   artifact-design 스킬 로드 후 Artifact로 시안 제작
+
 [Wave 1: 독립 기반 모듈 — 병렬, 각각 worktree 격리]
 ├─ impl-domain:    02-domain-model + 03-inventory-reader-port (src/domain/)
 ├─ impl-security:  10-security-audit (src/infrastructure/security/)
@@ -112,9 +116,17 @@ plans/ 계획서의 의존 관계에 따라 **독립 모듈을 병렬로 구현*
 
 [Wave 4: 인터페이스 — Wave 3 완료 후 병렬]
 ├─ impl-api:       08-api-server (src/api/)
-├─ impl-ui:        11-web-ui (static/)
+├─ impl-ui:        11-web-ui Part B (static/) — docs/03_design_system.md 준수
 └─ impl-report:    13-report-export (리포트·Excel 내보내기)
 ```
+
+**Wave 0 디자인 진행 지침**:
+- 백엔드 Wave와 무관하므로 **프로젝트 시작 시점에 함께 착수**한다
+- `artifact-design` 스킬을 **시안 작성 전에** 로드한다. 코드를 먼저 쓰고 로드하면 의미가 없다
+- 시안 목 데이터에 **경계 사례**(도구 미설치 VM, 60자 이름, 미발견 자원, Hyper-V 자원)를 반드시 포함시킨다.
+  이것이 없으면 시안 검토의 의미가 없다
+- **실제 서버명·IP를 목 데이터에 쓰지 않는다.** Artifact URL이 공유될 수 있다
+- `docs/03_design_system.md`가 확정되기 전에는 **Wave 4의 UI 구현을 승인하지 않는다**
 
 **실행 절차**:
 1. Wave 1의 독립 모듈들을 **worktree 격리**로 동시 구현 지시:
@@ -199,7 +211,8 @@ Wave 단위로 완료된 모듈은 **전체 구현 완료를 기다리지 않고
 | Phase 3 Wave 1 | domain ∥ security ∥ persistence | Wave 1 전체 승인 | `worktree` + `run_in_background` |
 | Phase 3 Wave 2 | vcenter ∥ hyperv ∥ auth | Wave 2 승인 | `worktree` + `run_in_background` |
 | Phase 3 Wave 3 | query ∥ sync-worker ∥ history | Wave 3 승인 | `worktree` + `run_in_background` |
-| Phase 3 Wave 4 | api ∥ web-ui ∥ report | Wave 4 승인 | `worktree` + `run_in_background` |
+| Phase 3 Wave 4 | api ∥ web-ui(Part B) ∥ report | Wave 4 승인 | `worktree` + `run_in_background` |
+| Wave 0 (전 과정 병렬) | 화면 시안 제작·검토 | 디자인 시스템 확정 | 백엔드와 독립 진행 |
 | Phase 3→4 오버랩 | implementer(Wave N+1) ∥ verifier(Wave N) | Wave별 부분 승인 | `run_in_background` |
 
 ---
@@ -221,8 +234,9 @@ Wave 단위로 완료된 모듈은 **전체 구현 완료를 기다리지 않고
 
 | 스킬 | 호출 방법 | 적용 Wave | 용도 |
 |---|---|---|---|
+| **artifact-design** | **시안 작성 전 로드** | **Wave 0** | 화면 시안 설계·시각 언어 (계획 11 Part A) |
 | **Playwright MCP** | `browser_*` 도구 직접 사용 | Wave 4~ | 포탈 UI/API E2E 테스트 |
-| **dataviz** | 차트 구현 시 로드 | Wave 4 | 자원 현황 대시보드 차트 설계 |
+| **dataviz** | 차트 작성 전 로드 | Wave 0·4 | 대시보드 차트 유형·색상 체계 |
 | **xlsx** | Excel 작업 시 자동 트리거 | Wave 4 | 인벤토리 Excel 내보내기 검증 |
 | **mermaid-tools** | 다이어그램 작업 시 | 전 Phase | 아키텍처·수집 흐름 다이어그램 생성 |
 
@@ -246,6 +260,7 @@ Wave 단위로 완료된 모듈은 **전체 구현 완료를 기다리지 않고
 ### 조건부 실행
 | 조건 | 실행할 스킬 |
 |---|---|
+| 화면 시안 제작 (Wave 0) | `artifact-design` — **시안 작성 전** 로드 |
 | `src/infrastructure/vcenter/`, `hyperv/` 변경 | `arch-check` — 교차 참조 + 읽기 전용 메서드 확인 |
 | `src/domain/ports.py` 변경 | `arch-check` — Protocol에 변경 메서드가 추가되지 않았는지 확인 |
 | `src/infrastructure/security/`, `src/domain/auth` 변경 | `security-review` |
