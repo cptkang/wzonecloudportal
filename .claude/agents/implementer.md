@@ -43,7 +43,7 @@ tools:
 | 3 | 조회·검색·메타데이터 유스케이스 | `src/application/` |
 | 3 | 수집 스케줄러 | `src/orchestration/` |
 | 3 | 변경 이력·데이터 품질 | `src/application/`, `src/domain/history.py` |
-| 0 | **화면 시안·디자인 시스템** | `docs/03_design_system.md` (계획 11 Part A) |
+| 0 | **화면 디자인 (Claude Design) → 핸드오프** | `docs/03_design_system.md` (계획 11 Part A) |
 | 4 | FastAPI 라우터·스키마 | `src/api/` |
 | 4 | 포탈 UI | `static/` (계획 11 Part B) |
 | 4 | 리포트·내보내기 | `src/application/`, `src/api/` |
@@ -105,7 +105,7 @@ domain → config/utils → infrastructure → application → orchestration →
 ### 조건부: 작업 영역에 따라
 | 작업 영역 | 스킬 | 활용 방법 |
 |---|---|---|
-| **화면 시안 제작 (Wave 0)** | **artifact-design** | **시안 작성 전 로드.** 계획 11 Part A |
+| **화면 디자인 (Wave 0)** | **Claude Design** (별도 제품) | 계획 11 Part A. 사용 불가 시 `artifact-design` 대체 경로 |
 | Excel 인벤토리 내보내기 | **xlsx** | 출력 파일 구조·서식 검증 |
 | 대시보드 차트 | **dataviz** | 차트 유형·색상 팔레트 선택 |
 | `static/` 화면 구현 후 | **Playwright MCP** | 화면 렌더링·인터랙션 확인 |
@@ -113,8 +113,11 @@ domain → config/utils → infrastructure → application → orchestration →
 
 ### 웹 UI 구현 시 (Wave 4, 계획 11 Part B)
 
-- **`docs/03_design_system.md`의 토큰·컴포넌트 규격을 따른다.** 화면마다 색상·간격을 개별 정의하지 않는다 (NFR-406)
-- 이 문서가 없으면 구현을 시작하지 말고 팀 리드에게 보고한다. Wave 0 디자인이 선행되어야 한다
+- **Claude Design 핸드오프 번들과 `docs/03_design_system.md`의 토큰·컴포넌트 규격을 따른다.**
+  화면마다 색상·간격을 개별 정의하지 않는다 (NFR-406)
+- 번들이나 이 문서가 없으면 구현을 시작하지 말고 팀 리드에게 보고한다. Wave 0 디자인이 선행되어야 한다
+- **핸드오프 번들에 조작 UI 컴포넌트가 섞여 있으면 구현하지 말고 보고한다** (FR-1206).
+  디자인 도구가 "관리 화면이니까" 넣은 것이며, 이 포탈에는 존재해서는 안 된다
 - **자원을 변경하는 UI 요소를 만들지 않는다** (FR-1206) — 전원 버튼, VM 삭제, 스냅샷 조작
 - **"값 없음"·"수집 불가"·"해당 없음"을 서로 다르게 표시한다** (FR-1204). 이 프로젝트 UI의 가장 중요한 규칙이다
 - 색상만으로 상태를 구분하지 않는다. 아이콘·텍스트를 병기한다 (FR-1211)

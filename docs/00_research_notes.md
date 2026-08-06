@@ -12,6 +12,7 @@
 | 계획 수립 시 | research-planner | §4·§5의 수집 API·속성명을 설계 입력으로 사용. §11의 미검증 항목은 직접 검증 |
 | 어댑터 구현 시 | implementer | §4·§5의 API·클래스·속성명, §6의 수집 제약 |
 | 검증 시 | verifier | §6·§8의 실패 조건을 테스트 케이스로 |
+| 화면 디자인 시 | 디자인 담당 | §13 Claude Design 도구 조사 — 접근 경로·핸드오프·한계 |
 
 **주의**: 이 문서는 **조사 시점(2026-08-06)의 2차 자료 요약**이다.
 구현 전에 실제 환경과 라이브러리 버전으로 재확인해야 하며, §11에 검증이 특히 필요한 항목을 모아 두었다.
@@ -332,6 +333,8 @@ VMware Aria Operations는 고아 디스크를 **보수적으로** 리포팅하�
 | SCVMM 유무로 수집 방식 상이 (§7.2) | CST-03, CST-09, §2.7 연결 유형 구분 | — |
 | WinRM 인증 방식이 환경 의존 (§7.3) | FR-103 연결 유형별 입력 폼, CST-06 | D-008 |
 | AD 계정 잠금 위험 (§7.3 관련 실무 판단) | FR-114 인증 실패 시 재시도 중단, CST-05 | D-008 |
+| Claude Design 핸드오프가 구조화 spec 전달 (§13.5) | FR-1212 구현 전 디자인 확정 | D-009 |
+| 범용 디자인 도구는 조작 UI를 기본 포함 (§13.7) | FR-1206 자원 변경 UI 미제공 | D-009 |
 | 좀비 VM·고아 VMDK·스냅샷이 낭비 요인 (§8) | FR-803 스냅샷 현황, FR-804 유휴 자원, FR-805 용량 현황 | — |
 | 상용 도구도 자동 삭제 미제공, 수동 검증 요구 (§8.4) | CST-01 (식별·보고만 수행) | D-005 |
 | 변경 이력 = 무엇이·언제·누가 (§9.1) | FR-701·FR-702 속성 변경 이력 | — |
@@ -400,3 +403,107 @@ VMware Aria Operations는 고아 디스크를 **보수적으로** 리포팅하�
 - [ITU Online — What Is a Zombie VM](https://www.ituonline.com/tech-definitions/what-is-a-zombie-vm/)
 - [Microsoft Learn — Azure Change Tracking and Inventory](https://learn.microsoft.com/en-us/azure/azure-change-tracking-inventory/overview-monitoring-agent)
 - [Open-AudIT — Configuration Management & Change Detection](https://open-audit.com/network-configuration-management/)
+
+---
+
+## 13. Claude Design — UI 디자인 도구 조사
+
+> 조사일: 2026-08-06
+> 목적: 웹 UI 디자인 방식 확정 (`spec.md` FR-1212, `docs/02_decision.md` D-009, 계획 11 Part A)
+
+### 13.1 개요
+
+Anthropic Labs가 2026년 4월 출시한 **프로토타이핑 워크스페이스**다.
+텍스트 프롬프트를 동작하는 UI 초안으로 변환하며, 결과물은 HTML/CSS/JS로 라이브 프리뷰에 렌더링된다.
+
+이미지 생성기가 아니라 **프로토타이핑 엔진**이다. 랜딩 페이지, 대시보드 목업, 인터랙티브 슬라이드 등을 만든다.
+
+### 13.2 접근 경로와 전제
+
+| 항목 | 내용 | 출처 |
+|---|---|---|
+| 접근 | **웹 `claude.ai/design` 또는 Claude Desktop 사이드바** | 공식 지원 문서 |
+| 미지원 | 모바일 | 공식 |
+| 플랜 | Pro / Max / Team / Enterprise (베타) | 공식 |
+| Enterprise | **기본 비활성 — 관리자가 조직 설정에서 활성화** | 공식 |
+
+> **2차 자료 불일치 주의**: 일부 가이드는 "데스크톱 앱에서는 동작하지 않고 브라우저만 가능"이라고 기술한다.
+> **공식 지원 문서는 Claude Desktop 사이드바 접근을 명시**하므로 공식을 기준으로 한다.
+> 초기 웹 전용에서 데스크톱으로 확대된 것으로 보인다.
+
+### 13.3 편집 방식
+
+- 자연어 대화로 수정
+- 인라인 코멘트
+- 캔버스에서 직접 편집
+- 간격·레이아웃 조정용 AI 생성 슬라이더
+
+### 13.4 디자인 시스템 임포트
+
+온보딩 시 **기존 코드베이스와 디자인 파일을 인제스트**하여 팀의 색상·타이포그래피·컴포넌트 라이브러리를
+신규 작업에 자동 적용한다. 품질은 소스 품질에 의존한다.
+
+→ 이 프로젝트는 신규라 최초에는 임포트할 자산이 없다. Wave 4 이후 `static/` 연결이 가능하다 (계획 11 §5.3).
+
+### 13.5 내보내기 — Claude Code 핸드오프가 핵심
+
+| 옵션 | 내용 |
+|---|---|
+| **Handoff to Claude Code** | **로컬 코딩 에이전트 또는 Claude Code Web으로 전달** |
+| Standalone HTML | 자체 호스팅용 인터랙티브 프로토타입 |
+| `.zip` | 원시 에셋 |
+| PDF / PPTX | 문서·발표용 |
+| 내부 URL | 조직 내 공유 (보기·코멘트·편집 권한) |
+| 외부 연동 | Canva, Adobe, Gamma, Vercel 등 |
+
+**핸드오프 번들 구성** (2차 자료):
+- 컴포넌트 구조 — machine-readable spec
+- **캔버스에서 실제 사용된 디자인 토큰**
+- 레이아웃 계층과 관계
+- 참조 에셋
+
+> "PNG가 아니다. 플러그인이 필요한 디자인 URL도 아니다. Claude Code가 직접 읽는 spec 파일이다."
+> 공식 문서 표현으로는 **"스크린샷에서 새로 시작하는 대신 기존 작업을 이어받는다."**
+
+→ 디자인을 보고 재구성하는 손실이 없다는 점이 이 도구를 채택한 핵심 근거다 (D-009).
+
+### 13.6 알려진 한계
+
+| 항목 | 내용 | 이 프로젝트에서의 대응 |
+|---|---|---|
+| **토큰 소비** | 한 세션이 Pro 주간 할당량 **50% 이상**을 소비한 사례 보고 | 화면 단위로 분할 진행 (계획 11 §11) |
+| 정밀도 | Figma Auto Layout 수준의 세밀함은 아님. "강한 디자인의 80~90%까지 빠르게" | 픽셀 조정은 구현 단계 |
+| 리서치 프리뷰 | 인라인 코멘트가 간헐적으로 사라짐 | 중요 피드백 별도 기록 |
+| 대규모 코드베이스 | 연결 시 지연 | `static/`만 연결 |
+| 다중 편집 | 기본 수준 | 검토는 코멘트 중심으로 |
+
+### 13.7 이 프로젝트 고유의 위험 — 조사에 없는 항목
+
+**범용 디자인 도구는 "가상 머신 관리 대시보드"를 만들면 전원·삭제·스냅샷 버튼을 자연스럽게 포함시킨다.**
+
+이 포탈은 읽기 전용이므로(FR-1206, D-005) 그런 요소가 들어가면 안 되지만,
+도구는 그 제약을 알지 못한다. 조사 자료 어디에도 이 문제는 언급되지 않으며,
+**프롬프트로 명시하고 화면마다·핸드오프 후에 검증해야 한다** (계획 11 §5.1, §6.1, §8.3).
+
+마찬가지로 이 프로젝트의 핵심 표시 규칙인 "수집 불가 / 해당 없음 / 빈 값" 3분기(FR-1204)도
+일반적인 디자인 관행이 아니므로 명시하지 않으면 반영되지 않는다.
+
+### 13.8 관련: Claude Code ↔ Figma 연동
+
+2026년 2월 Figma와 "Code to Canvas" 통합이 발표되었다. Figma MCP 서버를 통해
+Claude Code가 디자인 파일을 읽고, 구현된 UI를 Figma 캔버스로 되돌릴 수 있다.
+Figma 데스크톱 앱과 Dev/Full 시트가 필요하다.
+
+→ **이 프로젝트에는 채택하지 않는다.** Figma 도입·학습 비용이 발생하고,
+Claude Design 핸드오프로 동일 목적을 달성할 수 있다 (D-009 대안 검토).
+
+### 13.9 출처
+
+- [Anthropic 공식 — Get started with Claude Design](https://support.claude.com/en/articles/14604416-get-started-with-claude-design)
+- [ShelbyAI — How to Use Claude Design (2026)](https://www.shelby-ai.com/guides/how-to-use-claude-design/)
+- [claudefa.st — Claude Design to Claude Code: AI Design Handoff](https://claudefa.st/blog/guide/mechanics/claude-design-handoff)
+- [MindStudio — What Is Claude Design?](https://www.mindstudio.ai/blog/what-is-claude-design-anthropic-visual-prototyping)
+- [Neowin — Anthropic is turning Claude into a full-blown design tool](https://www.neowin.net/news/anthropic-is-turning-claude-into-a-full-blown-design-tool-with-this-latest-update/)
+- [Claude Code 데스크톱 애플리케이션 문서](https://code.claude.com/docs/en/desktop)
+- [Figma — Introducing Claude Code to Figma](https://www.figma.com/blog/introducing-claude-code-to-figma/)
+- [Figma Help — Claude Code and Figma: Set up the MCP server](https://help.figma.com/hc/en-us/articles/39888612464151-Claude-Code-and-Figma-Set-up-the-MCP-server)

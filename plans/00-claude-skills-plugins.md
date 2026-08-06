@@ -12,7 +12,7 @@
 |---|---|---|
 | 계층 격리 + 어댑터 결합 + **읽기 전용 범위** 강제 | **arch-check** (커스텀) | 최상 |
 | 자격증명 보호·조회 범위 격리 | **security-review** | 최상 |
-| **웹 UI 화면 시안 제작 (구현 전 확정)** | **artifact-design** | 높음 |
+| **웹 UI 화면 디자인 (구현 전 확정)** | **Claude Design** (별도 제품) / `artifact-design`(대체) | 높음 |
 | FastAPI 조회 API + 포탈 UI E2E | **Playwright MCP** | 높음 |
 | 자원 현황 대시보드 차트 | **dataviz** | 중간 |
 | 인벤토리 Excel 내보내기 | **xlsx** | 중간 |
@@ -123,29 +123,51 @@ browser_evaluate         → API 응답 JSON 검증
 
 **금지**: 운영 하이퍼바이저 연결 테스트
 
-### 3.2 artifact-design — 화면 시안 제작 (Wave 0)
+### 3.2 Claude Design — 화면 디자인 (Wave 0) · 스킬이 아닌 별도 제품
 
-**용도**: 웹 UI 화면 시안을 Claude Artifacts로 제작할 때의 페이지 설계 원칙과 시각 언어
+**용도**: 웹 UI 화면을 디자인하고 **Claude Code로 핸드오프**한다.
 
-`spec.md` FR-1212 / 계획 11 Part A가 규정한 **구현 전 시안 확정** 프로세스의 핵심 도구다.
+`spec.md` FR-1212 / 계획 11 Part A / D-009가 규정한 **구현 전 디자인 확정** 프로세스의 주 도구다.
+Claude Code 스킬이 아니라 **Claude Desktop 사이드바 또는 `claude.ai/design`에서 쓰는 별도 워크스페이스**다.
 
-**활용 시나리오**:
-- 자원 목록·상세·대시보드·연결 관리 화면 시안 제작
-- 실제 데이터 분포를 반영한 목 데이터로 **동작하는** 화면 생성 (클릭·필터·정렬)
-- URL로 공유하여 운영팀 검토 → 피드백 반영 → 동일 URL 재게시
-- 확정된 시안에서 디자인 토큰·컴포넌트 규격 추출 → `docs/03_design_system.md`
+| 항목 | 내용 |
+|---|---|
+| 접근 | Claude Desktop 사이드바(팔레트 아이콘) 또는 `claude.ai/design` |
+| 플랜 | **Pro / Max / Team / Enterprise. Enterprise는 관리자 활성화 필요** |
+| 산출 | 핸드오프 번들(컴포넌트 spec + 실제 사용 토큰 + 레이아웃 계층 + 에셋) |
+| 수신 | 로컬 Claude Code = 이 저장소 |
 
-**호출**: 시안 작성 **전에** 스킬을 로드한다. 코드를 먼저 쓰고 나중에 로드하면 의미가 없다.
+**활용 흐름** (계획 11 §4):
+1. 컨텍스트 주입 — 조작 UI 금지, 수집 불가 3분기 표시 등 프로젝트 제약 명시
+2. 화면별 디자인 (자원 목록 → 상세 → 대시보드 → 연결 관리 → 검색)
+3. 내부 URL 공유 → 운영팀 검토 (보기·코멘트·편집 권한)
+4. Export → Handoff to Claude Code
+5. 번들 토큰을 `docs/03_design_system.md`에 고정
 
-**시안에서 반드시 확인할 것** (계획 11 §3.1):
-- "수집 불가" 표시가 100행 중에서도 눈에 구분되는가 (FR-1204)
-- 긴 VM 이름에서 컬럼이 깨지지 않는가
-- 다크 모드에서 상태 색상 대비가 충분한가 (FR-1211)
-- 경고 배지가 여러 개 겹칠 때 읽히는가 (NFR-407)
+**가장 중요한 주의** (계획 11 §5.1): Claude Design은 범용 도구라
+**"VM 관리 대시보드"를 만들면 전원·삭제 버튼을 자연스럽게 넣는다.** FR-1206 위반이므로
+프롬프트에 명시하고 화면마다·핸드오프 후에 재확인한다.
 
-**주의**: 시안의 목 데이터에 **실제 서버명·IP를 쓰지 않는다.** Artifact URL이 공유될 수 있다.
+**목 데이터에 실제 서버명·IP를 쓰지 않는다.** 캔버스는 내부 URL로 공유된다 (NFR-206).
 
-### 3.3 dataviz
+상세 조사: `docs/00_research_notes.md` §13
+
+### 3.3 artifact-design — 대체 경로
+
+**용도**: Claude Design을 쓸 수 없을 때(플랜 미보유, Enterprise 미활성화, 토큰 예산 부족)
+Claude Artifacts로 HTML 시안을 직접 작성하기 위한 페이지 설계 원칙과 시각 언어.
+
+| Claude Design 대비 | 차이 |
+|---|---|
+| 장점 | 추가 플랜 불필요. Artifact CSP 제약이 인라인 CSS/JS를 강제해 `static/` 이관이 쉽다 |
+| 단점 | 캔버스 편집·인라인 코멘트 없음. **디자인 토큰을 수기로 문서화**해야 함 |
+
+**호출**: 시안 작성 **전에** 로드한다. 코드를 먼저 쓰고 나중에 로드하면 의미가 없다.
+
+**컨텍스트 주입(계획 11 §5.1)과 검증 항목(§6.1)은 대체 경로에서도 동일하게 적용한다.**
+도구가 바뀌어도 "조작 UI 금지"와 "수집 불가 3분기"는 이 프로젝트의 제약이다.
+
+### 3.4 dataviz
 
 **용도**: 자원 현황 대시보드 차트 설계
 
@@ -158,7 +180,7 @@ browser_evaluate         → API 응답 JSON 검증
 
 **적용 Wave**: Wave 4 (UI)
 
-### 3.4 xlsx
+### 3.5 xlsx
 
 **용도**: 인벤토리 Excel 내보내기 기능 검증
 
@@ -169,7 +191,7 @@ browser_evaluate         → API 응답 JSON 검증
 
 **적용 Wave**: Wave 4
 
-### 3.5 mermaid-tools
+### 3.6 mermaid-tools
 
 **용도**: 아키텍처·수집 흐름 다이어그램 생성
 
@@ -195,7 +217,7 @@ browser_evaluate         → API 응답 JSON 검증
 
 | Wave | 주요 작업 | 권장 스킬 |
 |---|---|---|
-| **Wave 0 (화면 디자인)** | 화면 시안 제작·검토·토큰 확정 (계획 11 Part A) | **artifact-design**, **dataviz**(대시보드 시안) |
+| **Wave 0 (화면 디자인)** | 화면 디자인·검토·핸드오프 (계획 11 Part A) | **Claude Design**, **dataviz**(차트 검토), `artifact-design`(대체 경로) |
 | Wave 1 (도메인·보안·저장소) | 자원 모델, Protocol, 자격증명 암호화, 저장소 | **arch-check**(읽기 전용 검사), **security-review**, code-review |
 | Wave 2 (수집 어댑터) | vCenter/Hyper-V 어댑터 | **arch-check**(교차 참조 + 읽기 전용), code-review |
 | Wave 3 (유스케이스·워커) | 조회·검색, 수집 스케줄러, 변경 이력 | arch-check, security-review, simplify |
@@ -224,11 +246,11 @@ Claude가 프론트엔드 작업 시 자동으로 사용한다.
 | 항목 | 판단 |
 |---|---|
 | 언제 필요한가 | 계획 11 Part B (`static/` 구현) 착수 시점 |
-| 없어도 되는가 | 된다. Part A에서 `artifact-design`으로 디자인을 확정하므로 구현은 그 규격을 따르기만 하면 된다 |
+| 없어도 되는가 | 된다. Part A에서 **Claude Design 핸드오프 번들**로 규격이 확정되므로 구현은 그것을 따르기만 하면 된다 |
 | 설치하면 무엇이 나아지나 | 시안 제작(Part A)과 구현(Part B) 모두에서 코드 품질·시각적 완성도 |
 
-**판단**: Part A를 `artifact-design`으로 진행하고, Part B 착수 시 팀 리드가 설치 여부를 사용자에게 제안한다.
-디자인이 이미 확정된 뒤이므로 설치하지 않아도 계획대로 구현할 수 있다.
+**판단**: Part A를 Claude Design으로 진행하고, Part B 착수 시 팀 리드가 설치 여부를 사용자에게 제안한다.
+디자인이 이미 핸드오프 번들로 확정된 뒤이므로 설치하지 않아도 계획대로 구현할 수 있다.
 
 ---
 
@@ -240,7 +262,8 @@ Claude가 프론트엔드 작업 시 자동으로 사용한다.
 | **security-review** | `/security-review` | 보안 점검 |
 | **code-review** | `/code-review` | 코드 리뷰 |
 | **simplify** | `/simplify` | 복잡도·중복 개선 |
-| **artifact-design** | **시안 작성 전 로드** | 화면 시안 설계 (Wave 0) |
+| **Claude Design** | Claude Desktop 사이드바 / `claude.ai/design` | **화면 디자인 + Claude Code 핸드오프 (Wave 0)** |
+| **artifact-design** | 시안 작성 전 로드 | 대체 경로 — Claude Design 사용 불가 시 |
 | **Playwright MCP** | `browser_*` 도구 직접 호출 | E2E 테스트 |
 | **dataviz** | 차트 작성 전 로드 | 차트 설계 |
 | **xlsx** | Excel 작업 시 자동 트리거 | 스프레드시트 검증 |

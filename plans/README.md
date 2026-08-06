@@ -21,7 +21,7 @@
 | 파일 | 영역 | Wave | 계층 | 주요 요건 |
 |---|---|---|---|---|
 | [01-project-structure.md](01-project-structure.md) | 디렉토리·설정·환경변수 | 0 | 전체 | — |
-| [11-web-ui.md](11-web-ui.md) **Part A** | **화면 시안 제작·디자인 확정** | **0** | — | FR-1207~1212 |
+| [11-web-ui.md](11-web-ui.md) **Part A** | **Claude Design으로 화면 디자인 → Claude Code 핸드오프** | **0** | — | FR-1207~1212 |
 | [02-domain-model.md](02-domain-model.md) | 자원 엔티티, 정규화 매핑, CI 식별 | 1 | domain | FR-301·302·304, §2 |
 | [03-inventory-reader-port.md](03-inventory-reader-port.md) | 커넥터 Protocol, 수집 결과 계약 | 1 | domain | FR-301, FR-501, NFR-202 |
 | [10-security-audit.md](10-security-audit.md) | 자격증명 암호화, 감사 로그 | 1 | infrastructure | NFR-203·208·209, FR-1004 |
@@ -41,7 +41,9 @@
 ```
 Wave 0  ┌─ 01-project-structure (디렉토리·설정 스켈레톤)
         │
-        └─ 11-web-ui Part A (화면 시안 → 검토 → 디자인 토큰 확정)
+        └─ 11-web-ui Part A  Claude Design 캔버스에서 화면 디자인
+             │               → 내부 URL 검토 → Handoff to Claude Code
+             │               → 번들 토큰을 docs/03_design_system.md에 고정
              │        └─ 백엔드와 병렬 진행. Wave 4 이전에만 끝나면 된다
              ▼
 Wave 1  ┌─ 02-domain-model ──┬─ 03-inventory-reader-port
@@ -65,8 +67,11 @@ Wave 4  ┌─ 08-api-server
 ```
 
 **Wave 0의 디자인은 백엔드 구현과 무관하므로 전 과정과 병렬로 진행한다.**
-다만 **Wave 4 착수 전에는 반드시 확정**되어야 한다. 시안 없이 화면을 만들면 재작업이 발생하고,
+다만 **Wave 4 착수 전에는 반드시 확정**되어야 한다. 디자인 없이 화면을 만들면 재작업이 발생하고,
 목록에 노출할 필드가 정해지지 않아 API 응답 형태도 확정할 수 없다.
+
+**Wave 0 착수 전 확인**: Claude Design은 Pro/Max/Team/Enterprise 플랜이 필요하며
+Enterprise는 관리자 활성화가 선행되어야 한다. 사용할 수 없으면 계획 11 §10의 대체 경로로 전환한다.
 
 **Wave 병렬 실행**: 같은 Wave 내 계획서는 담당 디렉토리가 겹치지 않으므로 worktree 격리로 동시 구현한다.
 공유 파일(`src/config.py`, `src/domain/ports.py`, `pyproject.toml`)은 Wave 종료 후 팀 리드가 통합한다.

@@ -43,8 +43,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **서비스는 웹 브라우저로 제공된다** (`spec.md` FR-1201). 운영자가 별도 클라이언트 없이 브라우저에서
 모든 조회·관리를 수행한다. 단, **자원을 변경하는 UI 요소는 제공하지 않는다** (FR-1206).
 
-화면 디자인은 **구현 전에 Claude Artifacts로 시안을 만들어 확정**한다 (FR-1212, D-009).
+화면 디자인은 **구현 전에 Claude Design으로 확정**하고 **Claude Code 핸드오프**로 구현한다 (FR-1212, D-009).
 확정된 토큰·컴포넌트 규격은 `docs/03_design_system.md`에 있으며, `static/` 구현은 이를 따른다.
+
+> **디자인 시 주의**: Claude Design은 범용 도구라 "VM 관리 대시보드"를 만들면
+> 전원·삭제 버튼을 자연스럽게 넣는다. 이 포탈은 읽기 전용이므로 프롬프트에 명시하고
+> 핸드오프 후 반드시 확인한다 (계획 11 §5.1·§8.3).
 
 **핵심 원칙 2가지**:
 1. 유스케이스 코드에 `if hypervisor == "vcenter"` 같은 분기가 있어서는 안 됩니다. 하이퍼바이저별 차이는 전부 어댑터 내부에 캡슐화합니다.

@@ -96,8 +96,10 @@ plans/ 계획서의 의존 관계에 따라 **독립 모듈을 병렬로 구현*
 
 ```
 [Wave 0: 화면 디자인 — 백엔드와 병렬 진행, Wave 4 착수 전 완료]
-└─ design-ui:      11-web-ui Part A (화면 시안 → 검토 → docs/03_design_system.md)
-                   artifact-design 스킬 로드 후 Artifact로 시안 제작
+└─ design-ui:      11-web-ui Part A
+                   Claude Design(Claude Desktop 사이드바 / claude.ai/design)에서 화면 디자인
+                   → 내부 URL 검토 → Handoff to Claude Code
+                   → 번들 토큰을 docs/03_design_system.md에 고정
 
 [Wave 1: 독립 기반 모듈 — 병렬, 각각 worktree 격리]
 ├─ impl-domain:    02-domain-model + 03-inventory-reader-port (src/domain/)
@@ -120,13 +122,22 @@ plans/ 계획서의 의존 관계에 따라 **독립 모듈을 병렬로 구현*
 └─ impl-report:    13-report-export (리포트·Excel 내보내기)
 ```
 
-**Wave 0 디자인 진행 지침**:
-- 백엔드 Wave와 무관하므로 **프로젝트 시작 시점에 함께 착수**한다
-- `artifact-design` 스킬을 **시안 작성 전에** 로드한다. 코드를 먼저 쓰고 로드하면 의미가 없다
-- 시안 목 데이터에 **경계 사례**(도구 미설치 VM, 60자 이름, 미발견 자원, Hyper-V 자원)를 반드시 포함시킨다.
-  이것이 없으면 시안 검토의 의미가 없다
-- **실제 서버명·IP를 목 데이터에 쓰지 않는다.** Artifact URL이 공유될 수 있다
-- `docs/03_design_system.md`가 확정되기 전에는 **Wave 4의 UI 구현을 승인하지 않는다**
+**Wave 0 디자인 진행 지침** (계획 11 Part A):
+
+1. **착수 전 확인**: Claude Design은 Pro/Max/Team/Enterprise 플랜이 필요하고
+   Enterprise는 관리자 활성화가 선행된다. 사용 불가 시 계획 11 §10 대체 경로(`artifact-design` + Artifact)로 전환하고
+   사용자에게 보고한다.
+2. **컨텍스트 주입이 가장 중요하다** (계획 11 §5.1). Claude Design은 범용 도구라
+   **"VM 관리 대시보드"를 만들면 전원·삭제·스냅샷 버튼을 자연스럽게 넣는다.** FR-1206 위반이다.
+   첫 프롬프트에 조작 UI 금지와 "수집 불가 3분기 표시"를 명시한다.
+3. 목 데이터에 **경계 사례 8종**(도구 미설치, 45자 이름, 미발견 자원, Hyper-V 자원 등)을 포함시킨다.
+   이것이 없으면 검토의 의미가 없다 (계획 11 §5.2).
+4. **실제 서버명·IP를 쓰지 않는다.** 캔버스는 내부 URL로 공유된다 (NFR-206).
+5. **화면 순서를 지킨다**: 자원 목록을 먼저 확정한다. 여기서 정해진 토큰이 나머지 화면의 기준이 된다.
+6. **핸드오프 직후 검토 5항목**(계획 11 §8.3)을 반드시 수행한다. 특히 조작 UI 요소가
+   spec에 섞여 들어왔는지 확인한다. 어긋나면 구현 전에 캔버스에서 고치고 다시 핸드오프한다.
+7. **토큰 소비가 크다.** 화면 5종을 한 세션에 몰아서 하지 말고 화면 단위로 나눈다.
+8. `docs/03_design_system.md`가 확정되기 전에는 **Wave 4의 UI 구현을 승인하지 않는다**.
 
 **실행 절차**:
 1. Wave 1의 독립 모듈들을 **worktree 격리**로 동시 구현 지시:
@@ -212,7 +223,7 @@ Wave 단위로 완료된 모듈은 **전체 구현 완료를 기다리지 않고
 | Phase 3 Wave 2 | vcenter ∥ hyperv ∥ auth | Wave 2 승인 | `worktree` + `run_in_background` |
 | Phase 3 Wave 3 | query ∥ sync-worker ∥ history | Wave 3 승인 | `worktree` + `run_in_background` |
 | Phase 3 Wave 4 | api ∥ web-ui(Part B) ∥ report | Wave 4 승인 | `worktree` + `run_in_background` |
-| Wave 0 (전 과정 병렬) | 화면 시안 제작·검토 | 디자인 시스템 확정 | 백엔드와 독립 진행 |
+| Wave 0 (전 과정 병렬) | Claude Design 화면 디자인·검토·핸드오프 | 디자인 시스템 확정 | 백엔드와 독립 진행 |
 | Phase 3→4 오버랩 | implementer(Wave N+1) ∥ verifier(Wave N) | Wave별 부분 승인 | `run_in_background` |
 
 ---
@@ -234,7 +245,8 @@ Wave 단위로 완료된 모듈은 **전체 구현 완료를 기다리지 않고
 
 | 스킬 | 호출 방법 | 적용 Wave | 용도 |
 |---|---|---|---|
-| **artifact-design** | **시안 작성 전 로드** | **Wave 0** | 화면 시안 설계·시각 언어 (계획 11 Part A) |
+| **Claude Design** | Claude Desktop 사이드바 / `claude.ai/design` | **Wave 0** | 화면 디자인 + Claude Code 핸드오프 (계획 11 Part A) |
+| `artifact-design` | 시안 작성 전 로드 | Wave 0 (대체) | Claude Design 사용 불가 시 |
 | **Playwright MCP** | `browser_*` 도구 직접 사용 | Wave 4~ | 포탈 UI/API E2E 테스트 |
 | **dataviz** | 차트 작성 전 로드 | Wave 0·4 | 대시보드 차트 유형·색상 체계 |
 | **xlsx** | Excel 작업 시 자동 트리거 | Wave 4 | 인벤토리 Excel 내보내기 검증 |
@@ -260,7 +272,7 @@ Wave 단위로 완료된 모듈은 **전체 구현 완료를 기다리지 않고
 ### 조건부 실행
 | 조건 | 실행할 스킬 |
 |---|---|
-| 화면 시안 제작 (Wave 0) | `artifact-design` — **시안 작성 전** 로드 |
+| 화면 디자인 (Wave 0) | **Claude Design** — 핸드오프 후 §8.3 검토 5항목 필수 |
 | `src/infrastructure/vcenter/`, `hyperv/` 변경 | `arch-check` — 교차 참조 + 읽기 전용 메서드 확인 |
 | `src/domain/ports.py` 변경 | `arch-check` — Protocol에 변경 메서드가 추가되지 않았는지 확인 |
 | `src/infrastructure/security/`, `src/domain/auth` 변경 | `security-review` |

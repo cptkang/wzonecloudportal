@@ -52,7 +52,7 @@ tools:
 | 계획 영역 | 스킬 | 참조 내용 |
 |---|---|---|
 | 전체 아키텍처 | **arch-check** | `.claude/skills/arch-check.md`의 계층 규칙과 특화 규칙 3개를 계획에 반영 |
-| 웹 UI 설계 | **artifact-design** | 화면 시안 제작 원칙. 구현 전 시안 확정 프로세스(FR-1212) |
+| 웹 UI 설계 | **Claude Design** | 화면 디자인 + Claude Code 핸드오프. 구현 전 디자인 확정(FR-1212, D-009) |
 | 대시보드 설계 | **dataviz** | 자원 현황 차트 유형·색상 체계 선택 |
 | 인벤토리 내보내기 | **xlsx** | Excel 출력 구조 설계 |
 | 아키텍처 문서화 | **mermaid-tools** | 계층 구조·수집 흐름 다이어그램 작성 |
