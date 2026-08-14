@@ -10,6 +10,51 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 전체 요건은 `spec.md`에 있습니다.
 아키텍처 의사결정과 근거는 `docs/02_decision.md`에 기록합니다 — **team-lead 에이전트는 변경 전 이 파일을 반드시 확인하고, 새 결정이 생기면 갱신해야 합니다.**
 
+**구현 착수 순서는 `plans/ROADMAP.md`를 따릅니다.** `plans/01`~`13`은 영역별 설계서이고,
+ROADMAP은 이를 동작하는 단계(Step)로 자른 실행 순서입니다.
+Step 1은 **화면 디자인 확정(Claude Design) + vCenter 1개 등록 → 수집 → VM 목록 조회**까지이며,
+그 상태로 실제 환경에 적용한 뒤 다음 단계로 갑니다. **디자인 트랙은 백엔드와 병렬로 첫날 시작합니다** (D-009).
+구현 요청을 받으면 **현재 Step의 범위 밖 기능인지 먼저 확인**하고, 범위 밖이면 사용자에게 확인을 요청하세요.
+
+> **현재 위치: Step 1 구현 완료 (2026-08-07) + Step 5(Hyper-V 어댑터) 조기 구현 (2026-08-14, D-018).**
+> Hyper-V 어댑터는 사용자 결정으로 순서를 앞당겨 경로 A(호스트 직접+JEA)·경로 B(SCVMM) 모두
+> 코드 구현과 fake 기반 테스트까지 완료했습니다. **실환경 검증은 되지 않았습니다** — SCVMM 계정
+> 준비·JEA 배포 전에는 해당 연결을 등록하지 않습니다 (계획 05 §4.3, ROADMAP §20.1).
+> 다음은 Step 2 — 실제 vCenter 적용·실측입니다. `plans/ROADMAP.md` §15의 18개 항목을 실환경으로
+> 확인하고 `docs/04_field_validation.md`에 기록합니다. Hyper-V 실측 항목(연구 노트 §11-4·5·11~15·18)도
+> 이때 함께 확인합니다. **실환경 검증 전에는 사내에 공개하지 않습니다** (ROADMAP §3).
+
+**실서버 배포 절차는 `docs/05_deployment.md`에 있습니다** — systemd·nginx·PostgreSQL 최소 권한 구성,
+검증 절차, 문제 해결까지 포함합니다. 아래는 로컬 개발용입니다.
+
+## 개발 환경
+
+```bash
+pip install -e ".[dev]"
+docker run -d --name wzoneportal-db -e POSTGRES_PASSWORD=devpass -e POSTGRES_USER=portal \
+    -e POSTGRES_DB=wzoneportal -p 55432:5432 postgres:16-alpine   # PostgreSQL 17 표준 / 16 하한 (D-013)
+cp .env.example .env        # 키 생성: python -c "import os,base64;print(base64.b64encode(os.urandom(32)).decode())"
+python -m alembic upgrade head
+python -m uvicorn src.main:app --port 8080     # http://127.0.0.1:8080/login.html
+python -m pytest             # 통합 테스트는 위 컨테이너에 wzoneportal_test DB를 만들어 씁니다
+```
+
+**vCenter 없이 수집 경로를 테스트하려면 vcsim(govmomi vCenter 시뮬레이터)을 씁니다.**
+
+```bash
+docker run -d --name wzoneportal-vcsim -p 8989:8989 vmware/vcsim:latest -l 0.0.0.0:8989 -vm 10
+```
+
+포탈에서 연결 등록: 주소 `127.0.0.1`, 포트 `8989`, 계정 `user`/`pass`(아무 값이나 허용),
+**`verify_tls=false` 필수**(자체 서명 인증서). `-vm 10`은 리소스풀당 VM 수 → 기본 인벤토리에서 VM 20대.
+vcsim은 게스트 도구가 없으므로 게스트 정보는 `tools_not_installed`로 수집되는 것이 정상입니다.
+
+**Hyper-V/SCVMM은 시뮬레이터도, 컨테이너 실행도 불가합니다** (Windows 전용 — D-018).
+대신 `tests/ps_mocks/hyperv_cmdlet_mocks.ps1`의 목 cmdlet으로 수집 스크립트 **원본을 실제
+Windows PowerShell 5.1에서 실행**하는 검증이 `tests/integration/test_ps_scripts_live.py`에
+있습니다 (Windows가 아니면 skip). `host_scripts.py`를 수정하면
+`python scripts/generate_jea_role.py`로 JEA 역할 파일을 재생성해야 하며, 어긋나면 이 테스트가 실패합니다.
+
 **요건의 근거와 기술 참고 자료는 `docs/00_research_notes.md`에 있습니다.**
 - 요건이 왜 그렇게 정해졌는지 모를 때 → §10 조사→요건 추적표를 역참조
 - vCenter/Hyper-V 수집 API·속성명·클래스명이 필요할 때 → §4·§5
@@ -31,7 +76,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   src/domain/ports.HypervisorInventoryReader
         ▲                          ▲
   infrastructure/vcenter    infrastructure/hyperv
-   (pyVmomi PropertyCollector)  (WinRM / WMI / KVP)
+   (pyVmomi PropertyCollector)  (WinRM — SCVMM 주 경로 / 호스트 직접 보조)
         │  하이퍼바이저 고유 모델 → 공통 자원 모델 정규화
         ▼
   infrastructure/repository ──► PostgreSQL (인벤토리·이력)
@@ -59,10 +104,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | Component | Technology |
 |-----------|-----------|
 | API 서버 | FastAPI + uvicorn |
-| vCenter 수집 | pyVmomi — PropertyCollector + ContainerView + RetrievePropertiesEx 페이징 |
-| Hyper-V 수집 | pypsrp / WinRM (PowerShell Remoting), WMI `root\virtualization\v2`, 게스트 정보는 KVP |
-| DB | PostgreSQL + SQLAlchemy (async) |
-| 캐시 / 작업 큐 | Redis |
+| vCenter 수집 | pyVmomi — **vSphere Web Services API (SOAP/vim25) 단일 경로.** PropertyCollector + ContainerView + RetrievePropertiesEx 페이징. vSphere Automation API(REST)·VI/JSON 미사용, vSphere Tags 미수집 (D-010) |
+| Hyper-V 수집 | pypsrp / WinRM (PowerShell Remoting). **수집 경로 2개** (D-012) — ① **SCVMM (주 경로, 도입 확정)**: `VirtualMachineManager` 모듈로 fabric 전체 1회 조회 ② Hyper-V 관리자 (보조, SCVMM 미관리 호스트만): `Hyper-V`·`FailoverClusters` 모듈 + WMI `root\virtualization\v2`, 게스트 정보는 KVP, **JEA 제약 세션 필수** |
+| DB | PostgreSQL 14+ + SQLAlchemy (async, asyncpg) + Alembic. **PostgreSQL 고유 기능 사용** (JSONB·INET·배열·pg_trgm·부분 인덱스) (D-013) |
+| 캐시 / 작업 큐 | Redis — 캐시·큐 전용, 원본 데이터 미저장. Redis 없이도 조회 동작 |
 | 설정 | pydantic-settings |
 | 인증·인가 | JWT + RBAC (조회 범위 제한) |
 | 테스트 | pytest + pytest-asyncio |
@@ -70,7 +115,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Key Constraints
 
 - **하이퍼바이저 쓰기 금지** — 제어·변경 API를 호출하지 않습니다. 커넥터 Protocol과 어댑터에 조회 메서드만 정의하며, `scripts/arch_check.py`가 메서드명을 검사해 자동 차단합니다.
-- **읽기 전용 계정** — 하이퍼바이저 접속 계정은 읽기 권한만 사용합니다 (vCenter: Read-Only 역할).
+- **읽기 전용 계정** — 하이퍼바이저 접속 계정은 읽기 권한만 사용합니다. vCenter는 Read-Only 역할, SCVMM은 `Read-Only Administrator` 역할 + `Remote Management Users`(로컬 관리자 아님), Hyper-V 호스트 직접 연결은 **JEA 제약 세션**을 씁니다 (D-012). **JEA 구성 전에는 해당 호스트를 등록하지 않습니다.**
 - **자격증명 보호** — 접속 정보는 암호화 저장하며, 로그·API 응답·예외 메시지·`__repr__`에 절대 노출하지 않습니다.
 - **조회는 저장소 경유** — 사용자 조회 요청이 하이퍼바이저를 직접 호출하지 않습니다. 응답 성능과 하이퍼바이저 부하를 동시에 보호합니다.
 - **부분 실패 허용** — 일부 연결이 장애여도 나머지 자원 조회는 정상 동작합니다. 실패한 연결의 데이터는 삭제하지 않고 신선도를 표시합니다.
@@ -184,3 +229,7 @@ Claude Code 스킬: `/arch-check` 로 호출 가능 (`.claude/skills/arch-check.
 | 2026-03-23 (이관) | `.env`의 `list[str]` 필드를 쉼표 구분 문자열로 설정하여 pydantic-settings 파싱 에러 발생 | pydantic-settings는 복합 타입(list, dict)을 JSON으로 파싱함 | `.env`에서 `list[str]` 필드는 반드시 JSON 배열 형식(`["a","b"]`)으로 작성 |
 | 2026-03-23 (이관) | 유틸 함수를 상위 계층에 배치하여 역방향 의존(infrastructure→application) 발생 | 함수의 계층 소속을 고려하지 않고 사용처 옆에 배치 | 새 함수 작성 시 `python scripts/arch_check.py` 로 계층 위반 검사 후 배치. 데이터 모델 변환 함수는 해당 모델이 있는 계층에 위치 |
 | 2026-06-10 (이관) | `model_post_init`에서 `os.getenv()`로 환경변수를 읽어 systemd 서비스(EnvironmentFile 미설정)에서 값이 로드되지 않음 | pydantic-settings의 `env_file` 로딩은 `os.environ`에 주입하지 않아 `os.getenv()`로 접근 불가 | `model_post_init`에서 `os.getenv()` 대신 pydantic-settings `AliasChoices`를 사용하여 `.env` 파일에서 직접 읽도록 구현 |
+| 2026-08-07 | ROADMAP Step 1이 근거로 계획 06 §2.7(`resource_identities`)을 지목하고도 DDL에 그 테이블을 넣지 않음. 게스트 폴백·API 응답 계약도 같은 방식으로 누락 | 단계 축소판을 쓸 때 **원본 계획서와 항목 단위로 대조하지 않고** 요약만 옮김 | 축소판(Step/Phase) 작성 시 원본 계획서를 열어 **테이블·필드·시그니처 단위로 대조**한다. 근거로 인용한 절은 반드시 축소판에 반영되었는지 역확인 (D-011) |
+| 2026-08-07 | `ConnectionKind.SCVMM`을 정의해 두고 리더 팩토리는 `NotImplementedError`를 던지는 상태로 방치 | enum에 값을 넣는 것과 경로를 구현하는 것을 분리해 두고, **미구현 값이 남았는지 추적하지 않음** | enum에 미구현 값을 두지 않거나, 두면 **계획서 완료 기준에 "미구현 분기 없음"을 명시**한다 (D-012) |
+| 2026-08-07 | DB 세션을 FastAPI `yield` 의존성 teardown에서 커밋하여, 등록 직후 목록 조회에 방금 만든 레코드가 빠짐 | teardown이 **응답 전송 뒤에** 실행된다. `httpx.ASGITransport` 테스트로는 인프로세스라 재현되지 않아 통과했다 | 쓰기 엔드포인트는 핸들러에서 명시적으로 커밋한다 (D-017). **요청 순서에 의존하는 동작은 ASGITransport가 아니라 실서버로 확인**한다 |
+| 2026-08-07 | `alembic.ini`에 한글 주석을 넣어 `UnicodeDecodeError: 'cp949' codec` 로 마이그레이션이 기동 불가 | `configparser`가 ini를 **시스템 로캘 인코딩**으로 읽는다. UTF-8이 아니다 | `alembic.ini`·`setup.cfg` 등 ini 계열 파일은 **ASCII만** 쓴다. 설명은 `.py`에 둔다 |

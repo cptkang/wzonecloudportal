@@ -34,6 +34,7 @@ CREATE TABLE connections (
     port                INTEGER NOT NULL,
     protocol            TEXT NOT NULL DEFAULT 'https',
     auth_method         TEXT,                       -- Hyper-V만 사용
+    session_configuration TEXT,                     -- JEA 엔드포인트 이름 (계획 05 §4.3.1)
     username            TEXT NOT NULL,
     password_encrypted  TEXT NOT NULL,              -- {key_version}:{nonce}:{ciphertext} (계획 10)
     verify_tls          BOOLEAN NOT NULL DEFAULT true,
@@ -103,7 +104,7 @@ CREATE TABLE virtual_machines (
     snapshot_size_bytes BIGINT,
     -- 기타
     annotation          TEXT,
-    native_tags         TEXT[],
+    custom_attributes   JSONB,                      -- vCenter Custom Attributes (이름→값). Tags 아님 (D-010)
     created_at_hv       TIMESTAMPTZ,
     -- 수명주기
     lifecycle           TEXT NOT NULL DEFAULT 'active',
@@ -670,7 +671,7 @@ async def _collect_type(self, reader, connection, rtype, observed_at, totals, ru
 ```
 
 **`outcome.error`가 있으면 건너뛰는 것**이 중요하다. Hyper-V 클러스터에서 일부 노드가 실패하면
-`failed=False`이지만 `error`가 채워진다 (계획 05 §8). 이때 미발견 처리하면 그 노드의 VM이 전부 사라진다.
+`failed=False`이지만 `error`가 채워진다 (계획 05 §9). 이때 미발견 처리하면 그 노드의 VM이 전부 사라진다.
 
 ### 7.2 수집 상태 판정
 

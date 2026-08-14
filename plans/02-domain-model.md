@@ -44,11 +44,16 @@ class HypervisorKind(StrEnum):
 
 
 class ConnectionKind(StrEnum):
-    """연결 단위. Hyper-V는 중앙 관리 지점이 없어 호스트/클러스터 단위로 등록한다."""
+    """연결 단위.
+
+    Microsoft 환경은 관리 콘솔이 두 계열이라 수집 경로가 갈린다 (D-012, 계획 05 §2).
+    - Hyper-V 관리자 계열: 중앙 관리 지점이 없어 호스트/클러스터 단위로 등록
+    - SCVMM: 서버 1대가 fabric 전체를 보유하므로 vCenter와 같은 단위로 등록
+    """
     VCENTER = "vcenter"
-    HYPERV_HOST = "hyperv-host"
-    HYPERV_CLUSTER = "hyperv-cluster"
-    SCVMM = "scvmm"                      # CST-09 확정 전까지 미구현
+    HYPERV_HOST = "hyperv-host"          # 경로 A — 단독 호스트
+    HYPERV_CLUSTER = "hyperv-cluster"    # 경로 A — 장애 조치 클러스터
+    SCVMM = "scvmm"                      # 경로 B — SCVMM 관리 서버
 
     @property
     def hypervisor(self) -> HypervisorKind:
@@ -446,7 +451,9 @@ class VirtualMachine(ResourceBase):
     folder_path: str | None = None       # Hyper-V는 항상 None
 
     annotation: str | None = None
-    native_tags: tuple[str, ...] = ()
+    # 하이퍼바이저의 사용자 정의 속성 (이름, 값) 쌍. vCenter Custom Attributes만 채워진다.
+    # vSphere Tags는 REST 전용 API라 수집하지 않는다 (D-010). Hyper-V는 항상 빈 튜플.
+    custom_attributes: tuple[tuple[str, str], ...] = ()
     created_at: datetime | None = None
 
     @property
@@ -618,6 +625,7 @@ class DuplicateCandidate:
 | 게스트 호스트명·IP | 도구 감지값 | 없음 | 도구 없으면 수집 불가 |
 | MAC·vCPU·메모리·디스크 | 하이퍼바이저 구성 | — | 도구 불필요 |
 | **소유자·환경·용도·태그** | **포탈 입력** | — | **수집이 절대 덮어쓰지 않음** |
+| 사용자 정의 속성(`custom_attributes`) | 하이퍼바이저 수집 | — | 수집값 전용 필드. 포탈 메타데이터와 **별개 필드**이며 초기값 참고용 (FR-606, D-010) |
 
 ```python
 def resolve_os_name(tools_value: str | None, config_value: str | None) -> tuple[str | None, OsSource | None]:
@@ -644,8 +652,9 @@ VCENTER_POWER_MAP: dict[str, PowerState] = {
     "suspended": PowerState.SUSPENDED,
 }
 
-# Hyper-V Msvm_ComputerSystem.EnabledState (CIM 표준 정수)
-# 문자열 비교는 로케일 영향을 받으므로 정수값을 우선 사용한다 (계획 05 §12)
+# Hyper-V Msvm_ComputerSystem.EnabledState (CIM 표준 정수) — 경로 A (계획 05 §8.1)
+# 표시 문자열은 로케일 영향을 받으므로 정수값을 쓴다.
+# SCVMM(경로 B)은 VirtualMachineState 열거형 이름을 주며, 이는 로케일 무관이다.
 HYPERV_ENABLED_STATE_MAP: dict[int, PowerState] = {
     2: PowerState.ON,          # Enabled
     3: PowerState.OFF,         # Disabled
@@ -741,6 +750,7 @@ class Connection:
     password: SecretStr                  # pydantic SecretStr — repr 마스킹
     protocol: Literal["http", "https"] = "https"
     auth_method: WinRmAuth | None = None # Hyper-V만 사용
+    session_configuration: str | None = None   # JEA 엔드포인트 이름 (계획 05 §4.3.1). None이면 기본 세션
     verify_tls: bool = True
     description: str | None = None
     collection_interval_minutes: int = 360

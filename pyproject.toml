@@ -1,0 +1,42 @@
+[project]
+name = "wzonecloudportal"
+version = "0.1.0"
+description = "다수 vCenter/Hyper-V 가상자원을 통합 조회하는 읽기 전용 인벤토리 포탈"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "pydantic>=2",
+    "pydantic-settings",
+    "sqlalchemy[asyncio]>=2",
+    "asyncpg",
+    "alembic",
+    "pyvmomi",                # vCenter 수집 (계획 04)
+    "pypsrp",                 # Hyper-V/SCVMM WinRM 수집 (계획 05). Kerberos/CredSSP는 extras — 계획 05 §4.1
+    "cryptography",           # 자격증명 AES-GCM (계획 10)
+    "bcrypt>=4",              # 비밀번호 해시 (D-015)
+    "python-jose[cryptography]",
+]
+
+# Step 3 이후에 도입한다. 지금 넣으면 미사용 의존이 된다.
+#   redis        — 캐시·분산 락 (Step 3)
+#   apscheduler  — 주기 수집 (Step 3)
+#   openpyxl     — 내보내기 (Step 8)
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-asyncio", "pytest-cov", "httpx", "ruff", "mypy"]
+
+[tool.setuptools.packages.find]
+include = ["src*"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.mypy]
+strict = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]

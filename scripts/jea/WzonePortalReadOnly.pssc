@@ -1,0 +1,11 @@
+﻿# WzonePortalReadOnly.pssc — JEA 세션 구성 (계획 05 §4.3.1)
+# 자동 생성 파일. RoleDefinitions의 그룹명을 배포 환경에 맞게 수정한 뒤 등록한다.
+@{
+    SchemaVersion = '2.0.0.0'
+    GUID = 'b8d2c4e6-7a93-4f21-8d55-c09e13f6a2d4'
+    SessionType = 'RestrictedRemoteServer'
+    RunAsVirtualAccount = $true
+    RoleDefinitions = @{
+        'DOMAIN\WzonePortalReaders' = @{ RoleCapabilities = 'WzonePortalReadOnly' }
+    }
+}

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>로그인 · 가상자원 인벤토리</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/layout.css">
+<link rel="stylesheet" href="css/components.css">
+</head>
+<body>
+
+<div class="auth">
+  <div class="auth__brand">
+    <span class="auth__mark">IV</span>
+    <span class="auth__titles">
+      <span class="auth__title">가상자원 인벤토리</span>
+      <span class="auth__kicker">READ-ONLY PORTAL</span>
+    </span>
+  </div>
+
+  <!-- 로그인 -->
+  <div class="auth__card" id="login-card">
+    <div class="auth__heading">로그인</div>
+    <div class="auth__error" id="login-error" hidden></div>
+
+    <form class="modal__form" id="login-form" autocomplete="off">
+      <div class="field">
+        <label class="field__label" for="f-username">아이디</label>
+        <input class="input input--mono" id="f-username" name="username" required autofocus>
+      </div>
+      <div class="field">
+        <label class="field__label" for="f-password">비밀번호</label>
+        <input class="input" id="f-password" name="password" type="password" required>
+      </div>
+      <button type="submit" class="btn btn--primary auth__submit" id="btn-login">로그인</button>
+    </form>
+
+    <div class="auth__foot">
+      <span>계정이 없으신가요?</span>
+      <a href="register.html">가입 신청</a>
+    </div>
+  </div>
+
+  <!-- 비밀번호 변경 강제 (FR-1008) — 임시 비밀번호로 로그인한 경우 -->
+  <div class="auth__card" id="change-card" hidden>
+    <div class="auth__heading">비밀번호를 변경하세요</div>
+    <div class="auth__lead">관리자가 발급한 임시 비밀번호를 사용 중입니다. 변경 후 이용할 수 있습니다.</div>
+    <div class="auth__error" id="change-error" hidden></div>
+
+    <form class="modal__form" id="change-form" autocomplete="off">
+      <div class="field">
+        <label class="field__label" for="f-current">현재 비밀번호</label>
+        <input class="input" id="f-current" type="password" required>
+      </div>
+      <div class="field">
+        <label class="field__label" for="f-new">새 비밀번호</label>
+        <input class="input" id="f-new" type="password" required minlength="10" maxlength="72">
+        <span class="field__hint">10~72자</span>
+      </div>
+      <button type="submit" class="btn btn--primary auth__submit">변경하고 계속</button>
+    </form>
+  </div>
+</div>
+
+<script src="js/format.js"></script>
+<script src="js/api.js"></script>
+<script src="js/shell.js"></script>
+<script src="js/login.js"></script>
+</body>
+</html>

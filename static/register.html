@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>가입 신청 · 가상자원 인벤토리</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/layout.css">
+<link rel="stylesheet" href="css/components.css">
+</head>
+<body>
+
+<div class="auth">
+  <div class="auth__brand">
+    <span class="auth__mark">IV</span>
+    <span class="auth__titles">
+      <span class="auth__title">가상자원 인벤토리</span>
+      <span class="auth__kicker">READ-ONLY PORTAL</span>
+    </span>
+  </div>
+
+  <div class="auth__card auth__card--wide" id="register-card">
+    <div class="auth__heading">가입 신청</div>
+    <div class="auth__lead">
+      신청 후 관리자 승인이 필요합니다. 승인 시 조회할 수 있는 범위가 함께 지정됩니다.
+    </div>
+    <div class="auth__error" id="register-error" hidden></div>
+
+    <form class="modal__form" id="register-form" autocomplete="off">
+      <div class="field">
+        <label class="field__label" for="f-username">아이디</label>
+        <input class="input input--mono" id="f-username" required
+               minlength="3" maxlength="64" pattern="[a-zA-Z0-9._-]+" autofocus>
+        <span class="field__hint">3~64자. 영문·숫자와 <code>.</code> <code>_</code> <code>-</code></span>
+      </div>
+
+      <div class="modal__row">
+        <div class="field">
+          <label class="field__label" for="f-display">이름</label>
+          <input class="input" id="f-display" required maxlength="64">
+        </div>
+        <div class="field">
+          <label class="field__label" for="f-email">이메일</label>
+          <input class="input" id="f-email" type="email" required maxlength="255">
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field__label" for="f-password">비밀번호</label>
+        <input class="input" id="f-password" type="password" required minlength="10" maxlength="72">
+        <span class="field__hint">10~72자</span>
+      </div>
+
+      <div class="field">
+        <label class="field__label" for="f-password2">비밀번호 확인</label>
+        <input class="input" id="f-password2" type="password" required>
+      </div>
+
+      <button type="submit" class="btn btn--primary auth__submit" id="btn-register">가입 신청</button>
+    </form>
+
+    <div class="auth__foot">
+      <span>이미 계정이 있으신가요?</span>
+      <a href="login.html">로그인</a>
+    </div>
+  </div>
+
+  <!-- 접수 완료 — 폼을 이 블록으로 교체한다 (다시 제출하지 않도록) -->
+  <div class="auth__card" id="done-card" hidden>
+    <div class="auth__done">
+      <span class="auth__done-icon">✓</span>
+      <div class="auth__heading">가입 신청이 접수되었습니다</div>
+      <div class="auth__lead" style="margin-top:0">
+        관리자 승인 후 로그인할 수 있습니다. 승인 결과는 관리자에게 문의하세요.
+      </div>
+      <a class="btn" href="login.html">로그인 화면으로</a>
+    </div>
+  </div>
+</div>
+
+<script src="js/format.js"></script>
+<script src="js/api.js"></script>
+<script src="js/register.js"></script>
+</body>
+</html>

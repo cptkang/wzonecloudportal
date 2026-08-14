@@ -244,7 +244,7 @@ def install_masking(handlers: Iterable[logging.Handler]) -> None:
 
 ### 5.2 예외 정제
 
-어댑터가 도메인 예외를 만들 때 원본 메시지를 정제한다 (계획 04 §8, 계획 05 §10).
+어댑터가 도메인 예외를 만들 때 원본 메시지를 정제한다 (계획 04 §8, 계획 05 §11).
 
 ```python
 raise UnreachableError(sanitize_message(str(exc), secrets=[conn.password.get_secret_value()]))

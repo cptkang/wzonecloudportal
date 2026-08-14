@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>사용자 · 가상자원 인벤토리</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/layout.css">
+<link rel="stylesheet" href="css/components.css">
+</head>
+<body data-page="users">
+
+<div class="shell">
+  <aside class="sidebar" id="sidebar"></aside>
+
+  <main class="main">
+    <!-- 이 화면에는 수집 상태를 두지 않는다. 계정 관리와 무관하다. -->
+    <header class="topbar"></header>
+
+    <div class="page page--scroll">
+      <div class="page__inner">
+        <div class="page__head page__head--flush">
+          <div class="page__titles">
+            <h1 class="page__title">사용자</h1>
+            <div class="page__sub">가입 신청을 승인하고 역할과 조회 범위를 부여합니다. 계정은 삭제하지 않고 비활성화합니다.</div>
+          </div>
+        </div>
+
+        <!-- 승인 대기 — 0건이면 렌더링하지 않는다 -->
+        <div id="pending-area"></div>
+
+        <div class="table-wrap table-wrap--flush">
+          <div class="table">
+            <div class="table__head cols-user">
+              <div>아이디</div>
+              <div>이름</div>
+              <div>역할</div>
+              <div>상태</div>
+              <div>조회 범위</div>
+              <div>마지막 로그인</div>
+              <div></div>
+            </div>
+            <div id="user-rows"></div>
+          </div>
+        </div>
+
+        <div class="foot-note">
+          조회 범위가 <strong>범위 없음</strong>인 사용자는 로그인해도 자원이 보이지 않습니다.
+          승인 시 범위를 함께 지정하거나 [범위]에서 부여하세요.
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- 승인 — 역할과 범위를 한 번에 정한다 -->
+<div class="modal" id="approve-modal" hidden>
+  <div class="modal__box modal__box--wide" role="dialog" aria-modal="true" aria-labelledby="approve-title">
+    <div class="modal__title" id="approve-title">가입 승인</div>
+    <div class="modal__body"><strong id="approve-name"></strong> 님의 가입을 승인합니다.</div>
+
+    <div class="modal__form">
+      <div class="field">
+        <span class="field__label">역할</span>
+        <div class="radio-row" id="approve-roles">
+          <label class="radio"><input type="radio" name="approve-role" value="viewer" checked><span>조회자</span></label>
+          <label class="radio"><input type="radio" name="approve-role" value="operator"><span>운영자</span></label>
+          <label class="radio"><input type="radio" name="approve-role" value="admin"><span>관리자</span></label>
+        </div>
+      </div>
+
+      <div class="field">
+        <span class="field__label">조회 범위</span>
+        <div class="scope-list" id="approve-scopes"></div>
+        <span class="field__hint" id="approve-scope-hint">선택하지 않으면 자원이 보이지 않습니다.</span>
+      </div>
+
+      <div class="field__error" id="approve-error" hidden></div>
+    </div>
+
+    <div class="modal__foot">
+      <button type="button" class="btn" id="btn-cancel-approve">취소</button>
+      <button type="button" class="btn btn--primary" id="btn-confirm-approve">승인</button>
+    </div>
+  </div>
+</div>
+
+<!-- 조회 범위 변경 -->
+<div class="modal" id="scope-modal" hidden>
+  <div class="modal__box" role="dialog" aria-modal="true" aria-labelledby="scope-title">
+    <div class="modal__title" id="scope-title">조회 범위</div>
+    <div class="modal__body"><strong id="scope-name"></strong> 님이 조회할 수 있는 연결입니다.</div>
+    <div class="scope-list" id="scope-list"></div>
+    <div class="field__error" id="scope-error" hidden></div>
+    <div class="modal__foot">
+      <button type="button" class="btn" id="btn-cancel-scope">취소</button>
+      <button type="button" class="btn btn--primary" id="btn-save-scope">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- 확인 (거부 / 비활성화 / 재활성화 / 역할 변경) -->
+<div class="modal" id="confirm-modal" hidden>
+  <div class="modal__box" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+    <div class="modal__title" id="confirm-title"></div>
+    <div class="modal__body" id="confirm-body"></div>
+    <div class="field__error" id="confirm-error" hidden></div>
+    <div class="modal__foot">
+      <button type="button" class="btn" id="btn-cancel-confirm">취소</button>
+      <button type="button" class="btn" id="btn-ok-confirm"></button>
+    </div>
+  </div>
+</div>
+
+<!-- 임시 비밀번호 — 1회만 표시 -->
+<div class="modal" id="secret-modal" hidden>
+  <div class="modal__box" role="dialog" aria-modal="true" aria-labelledby="secret-title">
+    <div class="modal__title" id="secret-title">임시 비밀번호</div>
+    <div class="modal__body">
+      <strong id="secret-name"></strong> 님에게 전달하세요. 첫 로그인 시 변경을 요구합니다.
+    </div>
+    <div class="secret-box">
+      <span id="secret-value"></span>
+      <button type="button" class="btn btn--sm" id="btn-copy-secret">복사</button>
+    </div>
+    <div class="notice notice--danger">이 창을 닫으면 다시 볼 수 없습니다.</div>
+    <div class="modal__foot">
+      <button type="button" class="btn btn--primary" id="btn-close-secret">확인</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="js/format.js"></script>
+<script src="js/api.js"></script>
+<script src="js/shell.js"></script>
+<script src="js/users.js"></script>
+</body>
+</html>

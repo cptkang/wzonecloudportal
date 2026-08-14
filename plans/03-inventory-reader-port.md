@@ -118,7 +118,7 @@ class ReaderCapabilities:
     connection_kind: ConnectionKind
     supports_resource_pool: bool
     supports_folder_hierarchy: bool
-    supports_native_tags: bool
+    supports_native_tags: bool           # 하이퍼바이저 네이티브 태그(vSphere Tags). 양쪽 모두 False (D-010)
     supports_cluster: bool
     supports_incremental: bool
     collectable_types: frozenset[ResourceType]
@@ -132,7 +132,7 @@ VCENTER_CAPABILITIES = ReaderCapabilities(
     connection_kind=ConnectionKind.VCENTER,
     supports_resource_pool=True,
     supports_folder_hierarchy=True,
-    supports_native_tags=False,      # Automation SDK 필요 가능성 — 조사 §11-7
+    supports_native_tags=False,      # vSphere Tags는 REST 전용 — 미지원 확정 (D-010)
     supports_cluster=True,
     supports_incremental=False,      # Phase 1은 전량 수집
     collectable_types=frozenset(ResourceType),
@@ -369,10 +369,11 @@ def create_reader(conn: Connection) -> HypervisorInventoryReader:
             from src.infrastructure.vcenter import VCenterInventoryReader
             return VCenterInventoryReader(conn)
         case ConnectionKind.HYPERV_HOST | ConnectionKind.HYPERV_CLUSTER:
-            from src.infrastructure.hyperv import HyperVInventoryReader
-            return HyperVInventoryReader(conn)
+            from src.infrastructure.hyperv import HyperVHostInventoryReader
+            return HyperVHostInventoryReader(conn)          # 경로 A (계획 05 §2)
         case ConnectionKind.SCVMM:
-            raise NotImplementedError("SCVMM 연동 미구현 — CST-09 확정 후")
+            from src.infrastructure.hyperv import ScvmmInventoryReader
+            return ScvmmInventoryReader(conn)               # 경로 B (계획 05 §2)
 ```
 
 ```python

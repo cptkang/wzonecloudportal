@@ -1,0 +1,430 @@
+/* 컴포넌트 — docs/03_design_system.md §2·§3 */
+
+/* ── 버튼 (§3.4) ──────────────────────────── */
+
+.btn {
+  all: unset;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--fg2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 6px 11px;
+  text-align: center;
+}
+.btn:hover { border-color: var(--fg3); color: var(--fg); }
+.btn:focus-visible { outline: 2px solid var(--kb); outline-offset: 1px; }
+.btn[disabled] { cursor: default; opacity: 0.5; }
+.btn[disabled]:hover { border-color: var(--line); color: var(--fg2); }
+
+.btn--primary {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--kb-ink);
+  background: var(--kb);
+  border-color: var(--kb);
+  padding: 8px 14px;
+}
+.btn--primary:hover { filter: brightness(0.95); color: var(--kb-ink); border-color: var(--kb); }
+
+.btn--danger { color: var(--danger); border-color: var(--warn-line); font-size: 11.5px; padding: 4px 9px; }
+.btn--danger:hover { background: var(--warn-bg); color: var(--danger); border-color: var(--warn-line); }
+
+.btn--danger-solid {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--danger);
+  border-color: var(--danger);
+  padding: 7px 14px;
+}
+.btn--danger-solid:hover { filter: brightness(1.08); color: #fff; }
+
+.btn--sm { font-size: 11.5px; padding: 4px 9px; }
+.btn--quiet { font-size: 11.5px; padding: 5px 9px; display: flex; align-items: center; gap: 6px; align-self: flex-start; }
+
+/* ── 폼 (§3.4) ────────────────────────────── */
+
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field__label { font-size: 11px; color: var(--fg3); font-weight: 600; }
+.field__hint { font-size: 11px; color: var(--fg3); line-height: 1.5; }
+.field__error { font-size: 11.5px; color: var(--danger); }
+
+.input {
+  width: 100%;
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--fg);
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 8px 12px;
+  outline: none;
+}
+.input:focus {
+  border-color: var(--kb);
+  background: var(--panel);
+  box-shadow: 0 0 0 3px var(--kb-soft);
+}
+.input--mono { font-family: var(--mono); font-size: 12.5px; }
+
+.checkbox { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--fg2); }
+.checkbox input { accent-color: var(--kb); }
+
+/* ── 세그먼트 컨트롤 (§3.3) ───────────────── */
+
+.seg { display: flex; align-items: center; gap: 8px; }
+.seg__label { font-size: 11px; color: var(--fg3); font-weight: 600; }
+.seg__group {
+  display: flex;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--panel);
+}
+.seg__btn {
+  all: unset;
+  cursor: pointer;
+  font-size: 11.5px;
+  padding: 5px 10px;
+  border-left: 1px solid var(--line);
+  color: var(--fg2);
+}
+.seg__btn:first-child { border-left: 0; }
+.seg__btn:hover { color: var(--fg); }
+.seg__btn[aria-pressed="true"] { background: var(--kb); color: var(--kb-ink); font-weight: 600; }
+
+/* ── 배지 (§3.3) ──────────────────────────── */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  padding: 2px 7px 2px 5px;
+  border-radius: 4px;
+  background: var(--chip);
+  color: var(--fg2);
+}
+.badge__tag {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  padding: 0 3px;
+  line-height: 1.5;
+}
+
+/* ── 표기 규칙 범례 (§2) ──────────────────── */
+
+.legend {
+  margin: 14px 22px 0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel2);
+  padding: 9px 13px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  font-size: 11.5px;
+  color: var(--fg2);
+}
+.legend__title { font-weight: 600; color: var(--fg); }
+.legend__item { display: flex; align-items: center; gap: 6px; }
+
+/* ── 상태 표현 (§2) — 4분기 ───────────────── */
+
+.state { display: flex; align-items: baseline; gap: 5px; font-size: 12.5px; }
+.state__icon { font-size: 11px; }
+.state__sub { font-size: 10.5px; color: var(--fg3); line-height: 1.45; }
+
+.state--value { color: var(--fg); font-family: var(--mono); }
+.state--value-text { color: var(--fg); font-family: var(--sans); }
+.state--unavailable { color: var(--warn-fg); font-family: var(--sans); }
+.state--na { color: var(--fg3); font-family: var(--sans); }
+.state--empty { color: var(--fg3); font-family: var(--mono); }
+
+/* 상세 화면에서 마지막 알려진 값을 칩으로 강조 (§2) */
+.state__sub--chip {
+  color: var(--fg3);
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-line);
+  border-radius: 3px;
+  padding: 3px 7px;
+  align-self: flex-start;
+}
+
+.power { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.power--on { color: var(--ok); }
+.power--off { color: var(--fg3); }
+.power--suspended { color: var(--warn-fg); }
+.power--unknown { color: var(--fg3); }
+
+.stale { display: flex; align-items: center; gap: 5px; font-size: 11.5px; font-family: var(--mono); color: var(--fg2); }
+.stale--warn { color: var(--warn-fg); }
+
+.conn-state { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
+.conn-state--ok { color: var(--ok); }
+.conn-state--warn { color: var(--warn-fg); }
+.conn-state--err { color: var(--danger); }
+
+/* ── 계정 상태·역할·범위 (§2.5~2.7) ───────────────
+   자원 상태와 같은 아이콘·색 체계를 쓴다. 계정용 팔레트를 따로 만들지 않는다. */
+
+.acct { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
+.acct--pending { color: var(--warn-fg); }
+.acct--active { color: var(--ok); }
+.acct--disabled { color: var(--fg3); }
+.acct--rejected { color: var(--danger); }
+
+.role {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--chip);
+  color: var(--fg2);
+}
+.role--admin { background: var(--kb-soft); color: var(--kb-txt); font-weight: 600; }
+.role--viewer { color: var(--fg3); }
+
+.scope { font-size: 12.5px; color: var(--fg); }
+.scope--all { color: var(--fg2); }
+/* 승인은 됐지만 범위가 없으면 화면이 비어 있다. 관리자가 놓치지 않도록 강조한다 (§2.7) */
+.scope--none { color: var(--warn-fg); display: flex; align-items: center; gap: 5px; }
+
+/* ── 승인 대기 블록 (§3.8) ────────────────────────
+   대기 0건이면 렌더링하지 않는다. 빈 블록을 남기면 상시 경고처럼 보인다. */
+
+.pending-box {
+  border: 1px solid var(--warn-line);
+  background: var(--warn-bg);
+  border-radius: 5px;
+  overflow: hidden;
+}
+.pending-box__head {
+  padding: 10px 16px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--warn-fg);
+  border-bottom: 1px solid var(--warn-line);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.pending-box__row {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) 1fr 1.2fr 120px 168px;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--warn-line);
+  font-size: 12.5px;
+  gap: 10px;
+}
+.pending-box__row:last-child { border-bottom: 0; }
+.pending-box__actions { display: flex; justify-content: flex-end; gap: 6px; }
+/* --warn-bg 배경 위에서는 --line 테두리가 묻힌다 */
+.pending-box__actions .btn { border-color: var(--warn-line); }
+
+/* 사용자 목록 컬럼. 마지막 컬럼은 동작 버튼 4개가 한 줄에 들어가야 한다. */
+.cols-user { grid-template-columns: minmax(140px, 1fr) minmax(120px, 1fr) 92px 116px 122px 156px 268px; }
+.cell__actions .btn { white-space: nowrap; }
+
+/* 계정의 마지막 로그인 — 수집 신선도와 달리 오래됐다고 경고하지 않는다 */
+.last-login { display: flex; flex-direction: column; gap: 2px; }
+.last-login__ago { font-size: 11.5px; font-family: var(--mono); color: var(--fg2); }
+.last-login__at { font-size: 10.5px; color: var(--fg3); font-family: var(--mono); }
+
+/* 임시 비밀번호 1회 표시 (§3.8) */
+.secret-box {
+  font-family: var(--mono);
+  font-size: 14px;
+  background: var(--panel2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  overflow-wrap: anywhere;
+}
+
+.radio-row { display: flex; gap: 16px; flex-wrap: wrap; }
+.radio { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--fg); }
+.radio input { accent-color: var(--kb); }
+
+.scope-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 180px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 10px 12px;
+  background: var(--panel2);
+}
+.scope-list[data-disabled="true"] { opacity: 0.5; pointer-events: none; }
+
+/* ── 데이터 표 (§3.2) ─────────────────────── */
+
+.table-wrap {
+  flex: 1;
+  min-height: 0;   /* 표는 컨테이너 안에서만 스크롤한다 (§3.2) */
+  margin: 14px 22px 22px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--panel);
+  overflow: auto;
+  box-shadow: var(--shadow);
+}
+.table-wrap--flush { margin: 0; flex: none; min-height: 0; }
+
+.table { min-width: 1080px; }
+.table--vm { min-width: 1000px; }
+
+.table__head,
+.table__row { display: grid; align-items: start; }
+
+.table__head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--panel2);
+  border-bottom: 1px solid var(--line);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg2);
+}
+.table__head > div { padding: 9px 14px; }
+
+.table__row { border-bottom: 1px solid var(--line2); }
+.table__row > div { padding: var(--row-pad-y) 14px; }
+.table__row--link { cursor: pointer; }
+.table__row--link:hover { background: var(--panel2); }
+
+.cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cell--num { text-align: right; font-family: var(--mono); font-size: 12.5px; }
+.cell--center { align-items: flex-end; }
+
+.cell__main {
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cell__sub { font-size: 10.5px; color: var(--fg3); font-family: var(--mono); }
+.cell__text { font-size: 12.5px; }
+.cell__actions { display: flex; justify-content: flex-end; gap: 6px; }
+
+.table__empty { padding: 56px 20px; text-align: center; color: var(--fg3); font-size: 13px; }
+
+/* VM 목록 컬럼. Step 4에서 IP·클러스터 컬럼을 추가할 때 여기와 헤더 마크업을 함께 넓힌다. */
+.cols-vm { grid-template-columns: minmax(240px, 1.6fr) 110px 210px 66px 104px 190px 168px; }
+
+/* 연결 목록 컬럼 */
+.cols-conn { grid-template-columns: minmax(190px, 1.3fr) 118px 1.2fr 200px 148px 78px 152px; }
+
+/* ── 페이지네이션 ─────────────────────────── */
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 0 22px 22px;
+  font-size: 12px;
+  color: var(--fg2);
+}
+.pager__pos { font-family: var(--mono); }
+
+/* ── 모달 (§3.5) ──────────────────────────── */
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(12, 10, 6, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.modal[hidden] { display: none; }
+
+.modal__box {
+  width: 460px;
+  max-width: 100%;
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.5);
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.modal__box--wide { width: 560px; }
+.modal__title { font-size: 15px; font-weight: 700; }
+.modal__body { font-size: 12.5px; color: var(--fg2); line-height: 1.65; }
+.modal__body strong { font-family: var(--mono); color: var(--fg); font-weight: 400; }
+.modal__form { display: flex; flex-direction: column; gap: 13px; }
+.modal__row { display: flex; gap: 10px; }
+.modal__row > .field { flex: 1; }
+.modal__foot { display: flex; justify-content: flex-end; gap: 8px; align-items: center; }
+.modal__foot-left { margin-right: auto; }
+
+/* ── 읽기 전용 배너 (§3.6) ────────────────── */
+
+.notice {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--kb);
+  border-radius: 4px;
+  background: var(--panel2);
+  padding: 10px 14px;
+  font-size: 12px;
+  color: var(--fg2);
+  line-height: 1.55;
+}
+.notice--danger { border-left-color: var(--danger); }
+
+.foot-note { font-size: 11.5px; color: var(--fg3); line-height: 1.6; }
+
+/* ── 연결 테스트 결과 (FR-106 4단계) ──────── */
+
+.check { display: flex; flex-direction: column; gap: 6px; }
+.check__row { display: flex; align-items: baseline; gap: 8px; font-size: 12px; }
+.check__icon { font-size: 11px; width: 12px; flex: 0 0 12px; }
+.check__label { color: var(--fg2); width: 84px; flex: 0 0 84px; }
+.check__detail { color: var(--fg3); font-size: 11.5px; min-width: 0; overflow-wrap: anywhere; }
+.check--pass .check__icon { color: var(--ok); }
+.check--fail .check__icon { color: var(--danger); }
+.check--skip .check__icon { color: var(--fg3); }
+
+/* ── 알림 바 ──────────────────────────────── */
+
+.toast {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 60;
+  max-width: 420px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--ok);
+  border-radius: 4px;
+  box-shadow: var(--shadow);
+  padding: 11px 14px;
+  font-size: 12.5px;
+  color: var(--fg);
+  line-height: 1.5;
+}
+.toast[hidden] { display: none; }
+.toast--err { border-left-color: var(--danger); }

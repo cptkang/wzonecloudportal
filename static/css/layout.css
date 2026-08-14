@@ -1,0 +1,283 @@
+/* 셸 레이아웃 — 사이드바 + 메인. docs/03_design_system.md §3.1 */
+
+* { box-sizing: border-box; }
+
+/* display를 지정한 요소에서 hidden 속성이 무시되는 것을 막는다.
+   .auth__card 같은 flex 컨테이너가 hidden인데도 보이는 사고가 실제로 있었다. */
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--sans);
+  -webkit-font-smoothing: antialiased;
+  font-variant-numeric: tabular-nums;
+}
+
+a { color: var(--kb-txt); text-decoration: none; }
+a:hover { color: var(--fg); text-decoration: underline; }
+::selection { background: var(--kb-soft); }
+
+/* 뷰포트 고정 + 내부 스크롤. 페이지 전체가 스크롤되면 사이드바 하단의
+   읽기 전용 안내문(FR-1206)이 화면 밖으로 밀려난다. */
+.shell {
+  height: 100vh;
+  display: flex;
+  overflow: hidden;
+}
+
+/* ── 사이드바 ─────────────────────────────── */
+
+.sidebar {
+  width: 234px;
+  flex: 0 0 234px;
+  border-right: 1px solid var(--line);
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar__brand {
+  padding: 18px;
+  border-bottom: 1px solid var(--line2);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sidebar__mark {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  border-radius: 5px;
+  background: var(--kb);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--kb-ink);
+}
+
+.sidebar__titles { display: flex; flex-direction: column; gap: 2px; }
+.sidebar__title { font-size: 13.5px; font-weight: 700; letter-spacing: -0.01em; }
+.sidebar__kicker {
+  font-size: 10px;
+  color: var(--fg3);
+  font-family: var(--mono);
+  letter-spacing: 0.08em;
+}
+
+.sidebar__nav { padding: 12px 10px; display: flex; flex-direction: column; gap: 2px; }
+
+.sidebar__group {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--fg3);
+  letter-spacing: 0.08em;
+  padding: 6px 8px 4px;
+}
+.sidebar__group + .nav-item { margin-top: 0; }
+.sidebar__group:not(:first-child) { padding-top: 14px; }
+
+.nav-item {
+  all: unset;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 5px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg2);
+  border-left: 3px solid transparent;
+}
+.nav-item:hover { color: var(--fg); }
+.nav-item[aria-current="page"] {
+  background: var(--kb-soft);
+  color: var(--fg);
+  border-left-color: var(--kb);
+}
+.nav-item__count { font-family: var(--mono); font-size: 11px; opacity: 0.65; }
+
+.sidebar__foot {
+  margin-top: auto;
+  padding: 14px 16px;
+  border-top: 1px solid var(--line2);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* 읽기 전용 선언 — FR-1206. 제거하지 않는다 (docs/03_design_system.md §3.1) */
+.sidebar__notice { font-size: 11px; color: var(--fg3); line-height: 1.55; }
+
+/* 로그인한 사용자 — 사이드바 하단 */
+.sidebar__user {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--line2);
+}
+.sidebar__user-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sidebar__user-name {
+  font-size: 12.5px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── 메인 ─────────────────────────────────── */
+
+/* min-height: 0 — flex 자식이 내용 크기 아래로 줄어들 수 있게 한다.
+   없으면 표가 길어질 때 셸 전체가 뷰포트를 넘는다. */
+.main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+
+.topbar {
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  padding: 11px 22px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16px;
+  flex-wrap: wrap;
+  min-height: 47px;
+}
+
+.topbar__sync {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 11.5px;
+  color: var(--fg2);
+}
+.topbar__dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
+.topbar__dot--warn { background: var(--warn-fg); }
+.topbar__dot--none { background: var(--fg3); }
+.topbar__at { font-family: var(--mono); color: var(--fg); }
+.topbar__sep { color: var(--fg3); }
+
+.page { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.page--scroll { overflow: auto; }
+.page__inner {
+  max-width: 1240px;
+  padding: 18px 22px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.page__head {
+  padding: 18px 22px 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.page__head--flush { padding: 0; }
+
+.page__titles { display: flex; flex-direction: column; gap: 4px; }
+.page__title { margin: 0; font-size: 19px; font-weight: 700; letter-spacing: -0.015em; }
+.page__sub { font-size: 12px; color: var(--fg2); }
+.page__actions { display: flex; align-items: center; gap: 10px; }
+.page__count { font-size: 12px; color: var(--fg2); font-family: var(--mono); }
+
+.toolbar {
+  padding: 14px 22px 0;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+/* ── 인증 화면 (docs/03_design_system.md §3.7) ─────────────
+   셸이 없다. 사이드바는 인증된 사용자의 탐색 수단이므로 로그인 전에 노출하지 않는다. */
+
+.auth {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 32px 20px;
+  background: var(--bg);
+}
+
+.auth__brand { display: flex; align-items: center; gap: 11px; }
+.auth__mark {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  border-radius: 6px;
+  background: var(--kb);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--kb-ink);
+}
+.auth__titles { display: flex; flex-direction: column; gap: 2px; }
+.auth__title { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+.auth__kicker {
+  font-size: 10px;
+  color: var(--fg3);
+  font-family: var(--mono);
+  letter-spacing: 0.08em;
+}
+
+.auth__card {
+  width: 380px;
+  max-width: 100%;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: var(--shadow);
+  padding: 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.auth__card--wide { width: 460px; }
+
+.auth__heading { font-size: 15px; font-weight: 700; }
+.auth__lead { font-size: 12px; color: var(--fg2); line-height: 1.6; margin-top: -6px; }
+
+.auth__submit { width: 100%; padding: 10px; }
+
+.auth__foot {
+  border-top: 1px solid var(--line2);
+  padding-top: 13px;
+  font-size: 12px;
+  color: var(--fg2);
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+}
+
+/* 폼 단위 오류 — 필드별로 흩뿌리지 않는다 (§3.7) */
+.auth__error {
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-line);
+  border-radius: 4px;
+  padding: 9px 12px;
+  font-size: 12px;
+  color: var(--warn-fg);
+  line-height: 1.55;
+}
+.auth__error[hidden] { display: none; }
+
+/* 접수 완료 등 — 폼을 이 블록으로 교체한다 */
+.auth__done { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
+.auth__done-icon { font-size: 22px; color: var(--ok); }

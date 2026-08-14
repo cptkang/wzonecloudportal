@@ -136,6 +136,10 @@ ContainerView          — 특정 폴더/인벤토리 범위의 관리 객체 �
 대규모 환경에서 특정 객체 타입만 targeting할 수 있어 ContainerView가 특히 유용하다.
 
 **최신 동향**: vSphere 8.0 Update 1의 VI JSON 프로토콜로 PropertyCollector·ContainerView 사용이 더 개선되었다.
+→ 단, **이 프로젝트는 VI JSON을 쓰지 않는다.** 지원 하한이 6.5이고 VI JSON은 8.0 U1+ 전용이다 (D-010, `spec.md` CST-10).
+
+**PropertyCollector는 SOAP(vim25) 전용 메커니즘이다.** vSphere Automation API(REST)에는 대응 기능이 없어
+자원 수만큼 왕복이 발생한다. 이것이 vCenter 접근을 SOAP 단일 경로로 확정한 결정적 근거다 (D-010).
 
 → FR-203, NFR-107, D-007의 근거. **구현 시 이 방식을 반드시 사용할 것** (`.claude/agents/implementer.md` 수집 어댑터 규칙).
 
@@ -251,7 +255,8 @@ Embedded PSC를 사용하는 Enhanced Linked Mode는 외부 PSC나 로드밸런�
 - Failover Cluster는 클러스터 내 모든 노드에 대한 가시성과 마이그레이션 추적을 제공한다.
 - 다수 Hyper-V 호스트의 인벤토리 수집에서 **SCVMM이 Microsoft의 기본 해법**이며, 없으면 에이전트리스 도구를 쓰거나 호스트별로 접근해야 한다.
 
-→ CST-03, CST-09(SCVMM 도입 여부 확인 필요), §2.7의 연결 유형(`hyperv-host` / `hyperv-cluster` / `scvmm`) 구분 근거.
+→ CST-03, CST-09, §2.7의 연결 유형(`hyperv-host` / `hyperv-cluster` / `scvmm`) 구분 근거.
+**2026-08-07 SCVMM 도입 확정** — 위 조사 내용이 그대로 채택되어 SCVMM이 주 수집 경로가 되었다 (D-012).
 
 ### 7.3 WinRM 인증 방식
 
@@ -350,10 +355,20 @@ VMware Aria Operations는 고아 디스크를 **보수적으로** 리포팅하�
 | 2 | pyVmomi 속성 경로의 버전별 차이 | vSphere 버전에 따라 속성 존재 여부·형식이 다를 수 있음 | 대상 vCenter 버전에서 실제 조회 |
 | 3 | 대규모 환경 수집 소요 시간 | 관리 규모(NFR-104)가 미확정이라 목표치를 못 세움 | 규모 확정 후 파일럿 측정 |
 | 4 | Hyper-V KVP 속성의 게스트 OS별 가용성 | Linux 게스트의 KVP 지원 범위가 Windows와 다를 수 있음 | 대상 환경의 Linux VM에서 실측 |
-| 5 | WinRM 인증 방식별 필요 설정 | 도메인 구성에 따라 TrustedHosts·CredSSP 설정이 다름 | 대상 Hyper-V 환경 관리자와 확인 |
+| 5 | WinRM 인증 방식별 필요 설정 | 도메인 구성에 따라 TrustedHosts·CredSSP 설정이 다름 | 대상 Hyper-V 환경 관리자와 확인. **라이브러리 측은 확인됨 (2026-08-14, pypsrp 0.9.1)**: CredSSP는 `pypsrp[credssp]`(requests-credssp), Kerberos는 `pypsrp[kerberos]`(pyspnego[kerberos]) extra 필요. 비동기 API 없음 → 전부 `asyncio.to_thread` (D-018) |
 | 6 | Failover Cluster 인벤토리 조회 방식 | 클러스터 단위 조회 API를 직접 확인하지 못함 | Failover Clustering PowerShell 모듈 문서 확인 |
-| 7 | vSphere Tags 수집 방법 | vSphere Automation SDK(REST)가 별도로 필요할 수 있음 (pyVmomi만으로 불가능할 가능성) | 실제 API 확인 — FR-606 구현 가능성에 직결 |
+| 7 | ~~vSphere Tags 수집 방법~~ | **해소됨 (2026-08-06)** — pyVmomi는 SOAP(vim25) 전용이고 Tags는 vSphere Automation API(REST) 소관임이 확인됨. **수집하지 않기로 결정** (D-010). Custom Attributes는 SOAP `CustomFieldsManager`로 수집 | — |
 | 8 | 자격증명 암호화 키 관리 방식 | 조사 범위에 없었음. 배포 환경에 따라 선택지가 다름 | NFR-208 `[TODO]` 확정 시 별도 조사 |
+| 9 | **pyVmomi의 vSphere 6.5 호환 범위** | 지원 하한을 6.5로 확정했으나(CST-10) 6.5는 VMware EOL 버전이라 최신 pyVmomi가 호환을 보증하지 않을 수 있음 | 대상 환경의 실제 버전 분포 확인 후 pyVmomi 버전 고정 (`plans/01`) |
+| 10 | Read-Only 역할에서 `customValue`·`customFieldsManager.field` 조회 가능 여부 | 조회 불가면 FR-606의 남은 절반(Custom Attributes)도 수집 불가 | Read-Only 계정으로 실측 (`plans/04` §5.2) |
+| 11 | **SCVMM `Get-SCVirtualMachine`의 `VMId` 존재 여부** | `native_id`의 근거다. 비어 있는 VM이 있으면 CI 식별이 깨진다 (D-012) | SCVMM에서 실측 (`plans/05` §7.2·§8.4) |
+| 12 | **SCVMM `OperatingSystem.Name`의 갱신 시점** | VM 생성 시 지정값인지 에이전트 갱신값인지에 따라 OS 출처 판정(FR-304)이 달라진다 | Tools 미설치 VM과 설치 VM을 비교 실측 |
+| 13 | **SCVMM `IPv4Addresses`의 출처** | KVP 중계인지 VMM IP 풀 값인지에 따라 "수집 불가" 판정 기준이 달라진다 (FR-501) | 통합 서비스를 끈 VM에서 값이 남는지 확인 |
+| 14 | **원격 세션에서 `VirtualMachineManager` 모듈 로드 가능 여부** | 불가하면 경로 B 전체가 성립하지 않는다 | SCVMM 서버에 WinRM 접속 후 `Import-Module` (`plans/05` §4.2) |
+| 15 | **`Read-Only Administrator` 역할의 조회 범위** | 이 역할로 VM·호스트·스토리지를 모두 읽지 못하면 읽기 전용 계정 전제가 무너진다 (D-012) | 해당 역할 계정으로 §10 권한 프로브 실행 |
+| 16 | ~~경로 A의 읽기 전용 계정 실현 방법~~ | **해소됨 (2026-08-07)** — SCVMM 도입 확정으로 경로 A 대상이 소수가 되어 **JEA 제약 세션**을 채택 (D-012 결정 7). 미해결로 남은 것은 아래 17·18 | — |
+| 17 | **`pypsrp`의 JEA 세션 구성 지원** | `RunspacePool`에 `configuration_name`을 지정해 JEA 엔드포인트에 붙을 수 있어야 한다 | **절반 해소 (2026-08-14)** — pypsrp 0.9.1의 `RunspacePool.__init__`이 `configuration_name` 파라미터(기본 `Microsoft.PowerShell`)를 지원함을 시그니처로 확인 (D-018). 인증 예외도 `pypsrp.exceptions.AuthenticationError` 타입 매칭으로 확정. **실제 JEA 엔드포인트 접속·허용 함수 외 차단 확인은 실환경 실측 필요** (`plans/05` §12-12) |
+| 18 | **JEA 함수 반환값의 직렬화** | 제약 세션은 객체를 역직렬화된 형태로 준다. 함수 안에서 `ConvertTo-Json`까지 마쳐 문자열을 반환하면 회피 가능한지 확인 | JEA 세션에서 수집 함수 실행 후 출력 형태 확인 |
 
 ---
 

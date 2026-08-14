@@ -46,17 +46,63 @@ ROLE_PERMISSIONS: dict[Role, frozenset[Permission]] = {
 }
 
 
+class UserStatus(StrEnum):
+    """계정 생애주기 (D-014). is_active 불리언으로는 '승인 대기'와 '비활성화'를 구분할 수 없다."""
+    PENDING = "pending"      # 가입 신청됨 — 로그인 불가
+    ACTIVE = "active"        # 승인됨
+    DISABLED = "disabled"    # 관리자가 비활성화 — 로그인 불가
+    REJECTED = "rejected"    # 가입 거부됨 — 로그인 불가
+
+
+#: 로그인이 허용되는 상태는 하나뿐이다. 새 상태를 추가할 때 이 집합을 반드시 검토한다.
+LOGIN_ALLOWED: frozenset[UserStatus] = frozenset({UserStatus.ACTIVE})
+
+
 @dataclass(frozen=True, slots=True)
 class AuthenticatedUser:
     user_id: UUID
     username: str
     display_name: str | None
     role: Role
-    is_active: bool
+    status: UserStatus
+    must_change_password: bool = False   # 관리자가 임시 비밀번호를 발급한 경우 (FR-1008)
 
     def has(self, permission: Permission) -> bool:
         return permission in ROLE_PERMISSIONS[self.role]
+
+    @property
+    def can_sign_in(self) -> bool:
+        return self.status in LOGIN_ALLOWED
 ```
+
+### 2.1 상태 전이 (FR-1006·1007, D-014)
+
+```
+        가입 신청
+            │
+            ▼
+        ┌─────────┐   승인(역할·범위 부여)   ┌────────┐   비활성화   ┌──────────┐
+        │ pending │ ──────────────────────► │ active │ ───────────► │ disabled │
+        └─────────┘                         └────────┘ ◄─────────── └──────────┘
+            │                                             재활성화
+            │ 거부
+            ▼
+        ┌──────────┐
+        │ rejected │
+        └──────────┘
+```
+
+```python
+ALLOWED_TRANSITIONS: dict[UserStatus, frozenset[UserStatus]] = {
+    UserStatus.PENDING: frozenset({UserStatus.ACTIVE, UserStatus.REJECTED}),
+    UserStatus.ACTIVE: frozenset({UserStatus.DISABLED}),
+    UserStatus.DISABLED: frozenset({UserStatus.ACTIVE}),
+    UserStatus.REJECTED: frozenset(),          # 종료 상태 — 재신청은 새 계정으로
+}
+```
+
+**계정을 삭제하지 않는다** (D-014). 감사 로그(FR-1004)의 행위자 참조가 끊기면 추적이 불가능해진다.
+관리자 화면의 "삭제"는 `disabled` 전환이며, 문구도 "비활성화"로 표기한다.
 
 | 역할 | 자원 조회 | 메타데이터 | 내보내기 | 수동 수집 | 연결 관리 | 사용자 관리 | 감사 조회 |
 |---|---|---|---|---|---|---|---|
@@ -220,6 +266,13 @@ MAX_FAILED_ATTEMPTS = 5
 LOCKOUT_DURATION = timedelta(minutes=15)
 
 
+STATUS_MESSAGE = {
+    UserStatus.PENDING: "가입 신청이 검토 중입니다. 관리자 승인 후 로그인할 수 있습니다.",
+    UserStatus.REJECTED: "가입이 승인되지 않았습니다. 관리자에게 문의하세요.",
+    UserStatus.DISABLED: "비활성화된 계정입니다. 관리자에게 문의하세요.",
+}
+
+
 class AuthService:
     async def login(self, username: str, password: SecretStr, ip: str | None) -> str:
         user_row = await self._users.find_by_username(username)
@@ -234,15 +287,18 @@ class AuthService:
             await self._audit_failure(username, ip, "locked")
             raise AuthenticationError("계정이 일시적으로 잠겨 있습니다. 잠시 후 다시 시도하세요.")
 
-        if not user_row.is_active:
-            await self._audit_failure(username, ip, "inactive")
-            raise AuthenticationError("아이디 또는 비밀번호가 올바르지 않습니다.")
-
+        # 비밀번호를 먼저 검증한다 — 상태 검사보다 앞이다 (D-014 §4번 근거)
         ok, new_hash = verify_password(password, user_row.password_hash)
         if not ok:
             await self._register_failure(user_row)
             await self._audit_failure(username, ip, "invalid_credentials")
             raise AuthenticationError("아이디 또는 비밀번호가 올바르지 않습니다.")
+
+        # 비밀번호가 맞은 뒤에야 상태별 사유를 알려준다.
+        # 순서를 바꾸면 비밀번호를 모르는 사람도 계정 존재를 알아낼 수 있다.
+        if user_row.status not in LOGIN_ALLOWED:
+            await self._audit_failure(username, ip, f"status_{user_row.status}")
+            raise AuthenticationError(STATUS_MESSAGE[UserStatus(user_row.status)])
 
         if new_hash:
             await self._users.update_hash(user_row.id, new_hash)
@@ -256,6 +312,131 @@ class AuthService:
 ```
 
 **응답 메시지를 통일한다.** "계정 없음"과 "비밀번호 불일치"를 구분하면 계정 열거가 가능해진다.
+
+**상태 사유는 비밀번호 검증을 통과한 뒤에만 노출한다.** 이 순서가 계정 열거 방지와
+"왜 로그인이 안 되는지 모르겠다"는 사용성 문제를 동시에 해결한다.
+
+### 4.3.1 토큰 전달 — `httpOnly` 쿠키 (D-014)
+
+```python
+COOKIE_NAME = "portal_session"
+
+
+def set_session_cookie(response: Response, token: str, settings: Settings) -> None:
+    response.set_cookie(
+        COOKIE_NAME, token,
+        httponly=True,                       # JS에서 접근 불가 — XSS 시 토큰 유출 차단
+        samesite="strict",                   # CSRF 기본 방어
+        secure=settings.cookie_secure,       # 운영 True. 개발 HTTP에서는 False
+        max_age=settings.jwt_expire_minutes * 60,
+        path="/",
+    )
+```
+
+- **`localStorage`에 토큰을 저장하지 않는다.** 인벤토리 정보의 민감도(NFR-206)를 고려하면
+  XSS 한 번에 토큰이 전량 유출되는 방식은 위험이 크다.
+- 로그아웃은 쿠키 삭제로 처리한다. 서버측 무효화(`jti` 블랙리스트)는 Step 8 API 키 도입 시 함께 검토한다.
+- 외부 연동(FR-1104)은 쿠키가 아니라 **API 키 헤더**를 쓴다. 브라우저 세션과 경로를 분리한다.
+
+---
+
+## 4.5 가입 신청 (FR-1006)
+
+```python
+class RegistrationService:
+    async def register(self, req: RegisterRequest, ip: str | None) -> None:
+        """가입을 신청한다. 반환값이 없다 — 성공·중복을 구분하지 않기 위함이다."""
+        normalized = req.username.strip().lower()
+
+        existing = await self._users.find_by_username(normalized)
+        if existing is not None:
+            # 중복이어도 같은 응답을 준다. 다르면 가입 폼이 계정 열거 수단이 된다.
+            await self._audit(AuditAction.USER_REGISTER_DUPLICATE, normalized, ip)
+            return
+
+        await self._users.create(
+            username=normalized,
+            password_hash=hash_password(req.password),
+            display_name=req.display_name,
+            email=req.email,
+            role=Role.VIEWER,                # 승인 시 관리자가 다시 정한다
+            status=UserStatus.PENDING,       # 신청 상태로만 저장 (D-014)
+        )
+        await self._audit(AuditAction.USER_REGISTER, normalized, ip)
+```
+
+**API는 항상 202를 반환하고 "신청이 접수되었습니다"만 응답한다.**
+중복 여부를 알려주면 가입 폼으로 계정 목록을 확인할 수 있다.
+
+| 검증 | 규칙 |
+|---|---|
+| 아이디 | 3~64자, 영문 소문자·숫자·`.`·`_`·`-`. 저장 시 소문자 정규화 |
+| 비밀번호 | 10~72자 (bcrypt 절단 한계, §4.1) |
+| 표시 이름 | 1~64자 |
+| 이메일 | 형식 검증만. 인증 메일은 보내지 않는다 (D-014 미결) |
+
+> **가입 API에 호출량 제한을 적용한다.** 제한이 없으면 계정 테이블을 무한히 채울 수 있다.
+> IP당 분당 5회를 기본값으로 하고 설정으로 조정한다.
+
+---
+
+## 4.6 사용자 관리 (FR-1007)
+
+```python
+class UserAdminService:
+    """모든 메서드가 admin 권한을 요구한다. 호출 전 scope.require(Permission.USER_MANAGE)."""
+
+    async def approve(
+        self, actor: AccessScope, user_id: UUID, role: Role, connection_ids: Sequence[UUID]
+    ) -> None:
+        """가입을 승인하면서 역할과 조회 범위를 함께 부여한다.
+
+        범위를 비워 두면 아무것도 보이지 않는다 (기본 거부, §3). 이는 정상 동작이다.
+        """
+        actor.require(Permission.USER_MANAGE)
+        user = await self._require_user(user_id)
+        self._check_transition(user.status, UserStatus.ACTIVE)
+
+        await self._users.update_status(user_id, UserStatus.ACTIVE, approved_by=actor.username)
+        await self._users.set_role(user_id, role)
+        await self._scopes.replace(user_id, connection_ids)
+        await self._audit(actor, AuditAction.USER_APPROVE, user_id,
+                          detail={"role": role.value, "connection_count": len(connection_ids)})
+
+    async def reject(self, actor: AccessScope, user_id: UUID, reason: str | None) -> None: ...
+    async def disable(self, actor: AccessScope, user_id: UUID) -> None: ...
+    async def enable(self, actor: AccessScope, user_id: UUID) -> None: ...
+    async def change_role(self, actor: AccessScope, user_id: UUID, role: Role) -> None: ...
+    async def set_scopes(self, actor: AccessScope, user_id: UUID, ids: Sequence[UUID]) -> None: ...
+    async def reset_password(self, actor: AccessScope, user_id: UUID) -> str:
+        """임시 비밀번호를 생성해 반환한다. 반환값은 화면에 1회만 표시한다 (FR-1008)."""
+
+    def _check_transition(self, current: UserStatus, target: UserStatus) -> None:
+        if target not in ALLOWED_TRANSITIONS[current]:
+            raise ValidationError(f"{current} → {target} 상태 전이는 허용되지 않습니다.")
+```
+
+### 4.6.1 마지막 관리자 보호
+
+```python
+async def _guard_last_admin(self, user_id: UUID, *, becoming: Role | UserStatus) -> None:
+    """마지막 활성 관리자의 강등·비활성화를 막는다.
+
+    막지 않으면 관리자가 0명이 되어 아무도 승인·연결 관리를 할 수 없는 잠금 상태가 된다.
+    이때는 DB를 직접 고치는 수밖에 없다.
+    """
+    if await self._users.count_active_admins(exclude=user_id) == 0:
+        raise ValidationError("마지막 관리자입니다. 다른 관리자를 지정한 뒤에 변경하세요.")
+```
+
+**자기 자신의 역할 변경·비활성화도 막는다.** 실수로 스스로를 잠그는 것이 가장 흔한 사고다.
+
+### 4.6.2 임시 비밀번호 (FR-1008)
+
+- 관리자가 발급하면 `must_change_password = true`가 되고, **첫 로그인 후 비밀번호 변경 전까지
+  조회 API를 호출할 수 없다.**
+- 생성한 평문은 **응답에 1회만 실어 보내고 저장하지 않는다.** 감사 로그에도 남기지 않는다 (값이 아니라 "발급됨" 사실만).
+- 본인 비밀번호 변경은 **현재 비밀번호 확인**을 요구한다.
 
 ### 4.4 외부 인증 (FR-1005) — `[TODO]`
 
@@ -283,19 +464,31 @@ LDAP은 "누구인가"만 답하고, "무엇을 볼 수 있는가"는 포탈이 
 ```sql
 CREATE TABLE users (
     user_id            UUID PRIMARY KEY,
-    username           TEXT UNIQUE NOT NULL,
+    username           TEXT UNIQUE NOT NULL,       -- 소문자 정규화하여 저장
     password_hash      TEXT,                       -- 외부 인증 사용자는 NULL
     display_name       TEXT,
     email              TEXT,
-    role               TEXT NOT NULL,
+    role               TEXT NOT NULL DEFAULT 'viewer',
     auth_provider      TEXT NOT NULL DEFAULT 'local',
-    is_active          BOOLEAN NOT NULL DEFAULT true,
+    -- 계정 생애주기 (D-014). is_active 불리언이 아니다 —
+    -- '승인 대기'와 '비활성화'를 구분해야 한다.
+    status             TEXT NOT NULL DEFAULT 'pending',
+    approved_by        TEXT,
+    approved_at        TIMESTAMPTZ,
+    reject_reason      TEXT,
+    must_change_password BOOLEAN NOT NULL DEFAULT false,   -- 임시 비밀번호 발급 시 (FR-1008)
     failed_login_count INTEGER NOT NULL DEFAULT 0,
     locked_until       TIMESTAMPTZ,
     last_login_at      TIMESTAMPTZ,
     created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+    updated_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+    CONSTRAINT ck_users_status CHECK (status IN ('pending', 'active', 'disabled', 'rejected'))
 );
+
+-- 관리자 화면의 첫 화면이 '승인 대기 목록'이므로 부분 인덱스를 둔다
+CREATE INDEX idx_users_pending ON users (created_at) WHERE status = 'pending';
+CREATE INDEX idx_users_status ON users (status);
 
 CREATE TABLE user_connection_scopes (
     user_id       UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
@@ -329,23 +522,26 @@ CREATE INDEX idx_api_keys_hash ON api_keys (key_hash);
 ## 6. API 계층 연동 (`src/api/deps.py`)
 
 ```python
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
-
-
 async def get_current_user(
-    token: str | None = Depends(oauth2_scheme),
-    api_key: str | None = Security(api_key_header),
+    request: Request,
+    api_key: str | None = Security(api_key_header),      # 외부 연동용 (Step 8)
     users: UserRepository = Depends(get_user_repo),
     settings: Settings = Depends(get_settings),
 ) -> AuthenticatedUser:
     if api_key:
         return await _authenticate_api_key(api_key, users)
+
+    token = request.cookies.get(COOKIE_NAME)             # 브라우저 세션은 쿠키다 (D-014)
     if not token:
         raise HTTPException(401, "인증이 필요합니다.")
+
     claims = decode_access_token(token, settings)
     user = await users.get(UUID(claims.sub))
-    if user is None or not user.is_active:
-        raise HTTPException(401, "인증이 필요합니다.")
+
+    # 상태를 매 요청 재확인한다. 토큰이 서명상 유효해도 계정이 이미
+    # 비활성화·거부되었을 수 있다. 이 검사가 없으면 권한 회수가 토큰 만료까지 지연된다.
+    if user is None or not user.can_sign_in:
+        raise HTTPException(401, "세션이 유효하지 않습니다. 다시 로그인하세요.")
     return user
 
 
@@ -443,6 +639,20 @@ async def ensure_bootstrap_admin(settings: Settings, users: UserRepository) -> N
 - [ ] 로그인 성공·실패가 감사 로그에 기록됨
 - [ ] JWT에 조회 범위가 포함되지 않음
 - [ ] 하드코딩된 기본 관리자 비밀번호가 없음
+- [ ] **`pending`·`rejected`·`disabled` 계정이 로그인하지 못함** (비밀번호가 맞아도)
+- [ ] **상태 사유가 비밀번호 검증을 통과한 뒤에만 노출됨** — 틀린 비밀번호로는 계정 존재를 알 수 없음
+- [ ] **가입 폼이 아이디 중복 여부를 노출하지 않음** (중복이어도 동일 응답)
+- [ ] 승인 시 부여한 역할·범위가 즉시 적용됨 (재로그인 불필요 — 범위는 요청마다 조회)
+- [ ] 범위를 비운 채 승인하면 자원이 하나도 보이지 않음 (기본 거부)
+- [ ] **마지막 활성 관리자를 강등·비활성화할 수 없음**
+- [ ] 자기 자신의 역할 변경·비활성화가 차단됨
+- [ ] 허용되지 않은 상태 전이가 거부됨 (`rejected` → `active` 등)
+- [ ] 임시 비밀번호가 응답에 1회만 나오고 **감사 로그·DB에 평문이 없음**
+- [ ] `must_change_password` 사용자가 비밀번호 변경 전에는 조회 API를 호출할 수 없음
+- [ ] 세션 쿠키가 `httpOnly`·`SameSite=Strict`로 설정됨
+- [ ] **JS에서 `document.cookie`로 토큰을 읽을 수 없음**
+- [ ] **비활성화 직후 기존 토큰으로 API를 호출하면 401** (토큰 만료를 기다리지 않음)
+- [ ] 계정이 물리 삭제되지 않음 (감사 로그 행위자 참조 유지)
 - [ ] `/security-review` 실행 결과 권한 우회 지적 0건
 
 ## 10. 주의사항

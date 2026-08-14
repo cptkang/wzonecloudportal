@@ -1,0 +1,90 @@
+﻿# WzonePortalReadOnly.psrc — wzoneportal 수집 전용 JEA 역할 기능
+# 자동 생성 파일. 수정하지 말 것 — python scripts/generate_jea_role.py 로 재생성한다.
+# 함수 본문은 src/infrastructure/hyperv/host_scripts.py 와 동일해야 한다 (계획 05 §12-13).
+@{
+    GUID = 'e3f1a7c2-5b1d-4c8e-9f30-2a6d84c1b7e5'
+    Author = 'wzoneportal'
+    Description = 'Read-only Hyper-V inventory collection functions'
+    FunctionDefinitions = @(
+    @{
+        Name = 'Get-WzoneVmInventory'
+        ScriptBlock = {
+            $ErrorActionPreference = 'Stop'
+            Get-VM | ForEach-Object {
+                $vm = $_
+                $kvp = @{}
+                try {
+                    $vmWmi = Get-CimInstance -Namespace root\virtualization\v2 -ClassName Msvm_ComputerSystem `
+                             -Filter "Name='$($vm.Id)'"
+                    $kvpComp = Get-CimAssociatedInstance -InputObject $vmWmi `
+                               -ResultClassName Msvm_KvpExchangeComponent -ErrorAction SilentlyContinue
+                    if ($kvpComp -and $kvpComp.GuestIntrinsicExchangeItems) {
+                        foreach ($item in $kvpComp.GuestIntrinsicExchangeItems) {
+                            $x = [xml]$item
+                            $n = ($x.INSTANCE.PROPERTY | Where-Object {$_.NAME -eq 'Name'}).VALUE
+                            $v = ($x.INSTANCE.PROPERTY | Where-Object {$_.NAME -eq 'Data'}).VALUE
+                            if ($n) { $kvp[$n] = $v }
+                        }
+                    }
+                } catch { }
+
+                $bios = $null
+                try {
+                    $vssd = Get-CimInstance -Namespace root\virtualization\v2 `
+                            -ClassName Msvm_VirtualSystemSettingData `
+                            -Filter "ConfigurationID='$($vm.Id)'" -ErrorAction SilentlyContinue
+                    if ($vssd) { $bios = $vssd.BIOSGUID }
+                } catch { }
+
+                [PSCustomObject]@{
+                    Id             = $vm.Id.ToString()
+                    Name           = $vm.Name
+                    State          = [int]$vm.State
+                    Generation     = $vm.Generation
+                    Version        = $vm.Version
+                    ProcessorCount = $vm.ProcessorCount
+                    MemoryAssigned = $vm.MemoryAssigned
+                    MemoryStartup  = $vm.MemoryStartup
+                    ComputerName   = $vm.ComputerName
+                    BiosGuid       = $bios
+                    IntegrationOk  = [bool]$kvp.Count
+                    KvpOSName      = $kvp['OSName']
+                    KvpOSVersion   = $kvp['OSVersion']
+                    KvpFQDN        = $kvp['FullyQualifiedDomainName']
+                    KvpIPv4        = $kvp['NetworkAddressIPv4']
+                    KvpIPv6        = $kvp['NetworkAddressIPv6']
+                    Adapters       = @($vm | Get-VMNetworkAdapter | ForEach-Object {
+                        [PSCustomObject]@{ IPAddresses = @($_.IPAddresses) }
+                    })
+                }
+            } | ConvertTo-Json -Depth 4 -Compress
+        }
+    }
+    @{
+        Name = 'Get-WzoneClusterNodes'
+        ScriptBlock = {
+            $ErrorActionPreference = 'Stop'
+            Import-Module FailoverClusters -ErrorAction Stop
+            $cluster = Get-Cluster
+            [PSCustomObject]@{
+                ClusterName = $cluster.Name
+                Nodes = @(Get-ClusterNode | ForEach-Object {
+                    [PSCustomObject]@{ Name=$_.Name; State=$_.State.ToString(); Id=$_.Id }
+                })
+            } | ConvertTo-Json -Depth 4 -Compress
+        }
+    }
+    @{
+        Name = 'Get-WzoneProbe'
+        ScriptBlock = {
+            $r = @{}
+            try { $null = Get-VM | Select-Object -First 1; $r['vm'] = $true } catch { $r['vm'] = $false }
+            try { $null = Get-CimInstance -Namespace root\virtualization\v2 -ClassName Msvm_ComputerSystem `
+                         -ErrorAction Stop | Select-Object -First 1; $r['wmi'] = $true } catch { $r['wmi'] = $false }
+            try { $r['os'] = (Get-CimInstance Win32_OperatingSystem).Caption } catch { $r['os'] = $null }
+            $r | ConvertTo-Json -Compress
+        }
+    }
+    )
+    VisibleFunctions = 'Get-Wzone*'
+}

@@ -99,9 +99,19 @@ def install_error_handlers(app: FastAPI) -> None:
 | 메서드 | 경로 | 요건 | 권한 |
 |---|---|---|---|
 | GET | `/api/v1/health` | — | 없음 |
+| POST | `/api/v1/auth/register` | **FR-1006** | 없음 (호출량 제한) |
 | POST | `/api/v1/auth/login` | FR-1001 | 없음 |
 | POST | `/api/v1/auth/logout` | — | 인증 |
 | GET | `/api/v1/auth/me` | — | 인증 |
+| POST | `/api/v1/auth/change-password` | **FR-1008** | 인증 |
+| GET | `/api/v1/users` | **FR-1007** | admin |
+| GET | `/api/v1/users/{id}` | FR-1007 | admin |
+| PATCH | `/api/v1/users/{id}` | FR-1007 (역할·표시이름) | admin |
+| POST | `/api/v1/users/{id}/approve` | **FR-1006·1007** | admin |
+| POST | `/api/v1/users/{id}/reject` | FR-1006 | admin |
+| POST | `/api/v1/users/{id}/disable` `/enable` | FR-1007 | admin |
+| PUT | `/api/v1/users/{id}/scopes` | FR-1003 | admin |
+| POST | `/api/v1/users/{id}/reset-password` | FR-1008 | admin |
 | GET | `/api/v1/connections` | FR-116 | admin |
 | POST | `/api/v1/connections` | FR-101·103·104·105 | admin |
 | GET | `/api/v1/connections/{id}` | FR-113 | admin |
@@ -129,6 +139,62 @@ def install_error_handlers(app: FastAPI) -> None:
 | POST | `/api/v1/duplicates/{id}/dismiss` | FR-308 | admin |
 | GET | `/api/v1/dashboard/summary` | FR-9xx | viewer |
 | GET | `/api/v1/reports/*` | FR-8xx | viewer |
+
+### 4.1 인증·계정 API (FR-1001·1006·1007·1008)
+
+상세 규칙은 계획 09 §4.5·4.6에 있다. 여기서는 HTTP 계약만 고정한다.
+
+```python
+# 가입 — 중복 여부를 노출하지 않기 위해 항상 202를 반환한다 (계획 09 §4.5)
+@router.post("/auth/register", status_code=202)
+async def register(req: RegisterRequest, request: Request, svc=Depends(get_registration_service)):
+    await svc.register(req, client_ip(request))
+    return {"message": "가입 신청이 접수되었습니다. 관리자 승인 후 로그인할 수 있습니다."}
+
+
+# 로그인 — 토큰을 본문이 아니라 httpOnly 쿠키로 내려보낸다 (D-014)
+@router.post("/auth/login")
+async def login(req: LoginRequest, response: Response, request: Request, svc=Depends(get_auth_service)):
+    token = await svc.login(req.username, req.password, client_ip(request))
+    set_session_cookie(response, token, settings)
+    return {"user": UserResponse.from_domain(await svc.current_user(token))}
+```
+
+| 엔드포인트 | 요청 | 응답 | 비고 |
+|---|---|---|---|
+| `POST /auth/register` | `username`·`password`·`display_name`·`email` | **202** + 안내 문구 | 중복이어도 동일 응답 |
+| `POST /auth/login` | `username`·`password` | 200 + `user` + **Set-Cookie** | 토큰을 본문에 넣지 않는다 |
+| `POST /auth/logout` | — | 204 + 쿠키 삭제 | |
+| `GET /auth/me` | — | `user` + `permissions[]` + `must_change_password` | **UI 메뉴 노출 판단에 쓴다** (FR-1213) |
+| `POST /auth/change-password` | `current_password`·`new_password` | 204 | 현재 비밀번호 확인 필수 |
+
+**사용자 관리** — 모두 `admin` 전용이며 `Permission.USER_MANAGE`를 검사한다.
+
+| 엔드포인트 | 본문 | 비고 |
+|---|---|---|
+| `GET /users?status=&page=&size=` | — | `status=pending`이 관리자 화면 기본 필터 |
+| `POST /users/{id}/approve` | `role`·`connection_ids[]` | **역할과 범위를 승인과 한 번에 부여** |
+| `POST /users/{id}/reject` | `reason?` | |
+| `POST /users/{id}/disable` · `/enable` | — | |
+| `PATCH /users/{id}` | `role?`·`display_name?` | |
+| `PUT /users/{id}/scopes` | `connection_ids[]` | 전체 교체(멱등) |
+| `POST /users/{id}/reset-password` | — | 응답에 **임시 비밀번호 1회만** 포함 |
+
+> **`DELETE /users/{id}`를 만들지 않는다.** 계정은 비활성화만 한다 (D-014).
+> 감사 로그의 행위자 참조가 끊기면 "누가 이 연결을 등록했는가"를 추적할 수 없다.
+
+**응답에 `password_hash`·`locked_until`을 넣지 않는다.** `UserResponse`에 필드를 정의하지 않는 것으로 강제한다.
+
+### 4.2 인증이 필요 없는 경로
+
+```python
+PUBLIC_PATHS = {"/api/v1/health", "/api/v1/auth/login", "/api/v1/auth/register"}
+```
+
+**이 집합은 화이트리스트다.** 새 엔드포인트는 기본적으로 인증이 필요하며,
+공개가 필요하면 여기에 명시적으로 추가한다. 반대로 만들면 인증 누락이 조용히 생긴다.
+
+`/auth/register`는 인증이 없으므로 **호출량 제한을 반드시 적용한다** (계획 09 §4.5).
 
 ---
 
@@ -171,17 +237,37 @@ class VCenterConnectionCreate(_ConnectionBase):
 
 
 class HyperVConnectionCreate(_ConnectionBase):
+    """경로 A — Hyper-V 관리자 계열. 호스트 또는 클러스터 (계획 05 §2)."""
     kind: Literal[ConnectionKind.HYPERV_HOST, ConnectionKind.HYPERV_CLUSTER]
     port: int = Field(default=5986, ge=1, le=65535)
     protocol: Literal["http", "https"] = "https"
     auth_method: WinRmAuth                       # 필수 — Hyper-V만 (FR-103)
+    session_configuration: str | None = None     # JEA 엔드포인트 이름 (계획 05 §4.3.1)
+
+
+class ScvmmConnectionCreate(_ConnectionBase):
+    """경로 B — SCVMM 관리 서버 1대가 fabric 전체를 대표한다 (D-012).
+
+    address는 **SCVMM 서버 자신**이어야 한다. 콘솔만 설치된 서버를 경유하면
+    이중 홉이 되어 CredSSP가 필요해진다 (계획 05 §4.2).
+    """
+    kind: Literal[ConnectionKind.SCVMM]
+    port: int = Field(default=5986, ge=1, le=65535)
+    protocol: Literal["http", "https"] = "https"
+    auth_method: WinRmAuth                       # WinRM 접속이므로 경로 A와 동일하게 필수
 
 
 ConnectionCreate = Annotated[
-    VCenterConnectionCreate | HyperVConnectionCreate,
+    VCenterConnectionCreate | HyperVConnectionCreate | ScvmmConnectionCreate,
     Field(discriminator="kind"),
 ]
 ```
+
+**SCVMM과 Hyper-V 호스트를 동시에 등록하면 같은 VM이 두 자원으로 생성된다** (계획 05 §2.1).
+등록 자체를 막지는 않는다 — SCVMM이 관리하지 않는 독립 호스트가 있을 수 있다.
+대신 **SCVMM 연결이 이미 있는 상태에서 `hyperv-host`를 등록하면 응답에 경고를 포함**하고,
+UI가 확인 다이얼로그를 띄운다. 차단이 아니라 경고인 이유는 어느 호스트가 SCVMM 관리 대상인지
+포탈이 등록 시점에는 알 수 없기 때문이다.
 
 ### 5.2 응답 스키마 — 비밀번호 부재
 

@@ -1,8 +1,8 @@
 # 04. vCenter 수집 어댑터
 
 > Wave: 2 · 계층: infrastructure (`src/infrastructure/vcenter/`)
-> 담당 요건: FR-203, FR-106, FR-301, FR-501, `spec.md` §2.2 vCenter 출처 열
-> 의존: 02, 03 · 관련 결정: D-003, D-005, D-007
+> 담당 요건: FR-203, FR-106, FR-301, FR-501, FR-606(부분), `spec.md` §2.2 vCenter 출처 열
+> 의존: 02, 03 · 관련 결정: D-003, D-005, D-007, **D-010**
 
 ## 1. 목적
 
@@ -10,6 +10,24 @@ pyVmomi로 vCenter 인벤토리를 수집하여 공통 도메인 모델로 반�
 
 **`src/infrastructure/hyperv`를 절대 import하지 않는다** (arch-check 특화 규칙 7).
 공통 로직이 필요하면 `src/utils/` 또는 `src/domain/`에 두고 양쪽이 각각 참조한다.
+
+### 1.1 연동 방식 — SOAP 단일 경로 (D-010)
+
+vCenter 접근은 **vSphere Web Services API (SOAP/vim25) 하나만 사용한다.** pyVmomi가 그 Python 바인딩이다.
+
+| 쓰지 않는 방식 | 이유 |
+|---|---|
+| vSphere Automation API (REST) | 서버측 일괄 조회 메커니즘이 없어 자원 수만큼 왕복 발생 → D-007 위반 |
+| VI/JSON | vSphere 8.0 U1+ 전용. 지원 하한이 6.5이므로 사용 불가 (`spec.md` CST-10) |
+
+**따라서 vSphere Tags는 수집하지 않는다.** Tags는 REST 전용 API이며, `ReaderCapabilities.supports_native_tags = False`는
+"조사 미완"이 아니라 **미지원 확정**이다 (계획 03 §3).
+
+FR-606 중 이 어댑터가 담당하는 범위는 **Notes(`config.annotation`) + Custom Attributes(`customValue`)** 두 가지다.
+Custom Attributes는 SOAP의 `CustomFieldsManager` 소관이라 REST 없이 수집 가능하다 (§5.2).
+
+> **HTTP 클라이언트를 이 패키지에 들이지 않는다.** `httpx`·`requests`로 vCenter REST를 직접 호출하면
+> D-010을 우회하는 것이고, `arch_check.py`의 읽기 전용 검사(메서드명 기반)가 HTTP 동사를 잡지 못한다.
 
 ## 2. 모듈 구성
 
@@ -20,6 +38,7 @@ src/infrastructure/vcenter/
 ├── session.py           SmartConnect 세션 관리
 ├── collector.py         PropertyCollector 페이징 조회
 ├── property_specs.py    자원 유형별 수집 속성 목록
+├── custom_fields.py     CustomFieldsManager 키→이름 사전 (§5.2)
 ├── mapper.py            pyVmomi 속성 dict → 도메인 모델
 └── errors.py            pyVmomi 예외 → 도메인 예외
 ```
@@ -251,6 +270,7 @@ VM_PROPERTIES: list[str] = [
     "snapshot",                         # 스냅샷 트리
     "resourcePool",
     "parent",                           # 폴더
+    "customValue",                      # Custom Attributes (FR-606, §5.2)
 ]
 
 HOST_PROPERTIES: list[str] = [
@@ -292,7 +312,8 @@ DVPG_PROPERTIES: list[str] = ["name", "config.defaultPortConfig", "config.distri
 ```
 
 > **[검증 필요]** (`docs/00_research_notes.md` §11-2): 속성 경로는 vSphere 버전에 따라 존재 여부가 다르다.
-> 대상 vCenter에서 실제 조회하여 확인하고, 누락 속성은 예외가 아닌 `None`으로 처리한다 (`missingSet` 처리로 자동 대응).
+> **지원 하한이 6.5이므로** (`spec.md` CST-10) 6.5 환경에서 반드시 실측한다. `config.createDate`처럼 후속 버전에서
+> 추가된 속성은 6.5에서 `missingSet`으로 떨어질 수 있다. 누락 속성은 예외가 아닌 `None`으로 처리한다 (§4.2 `_props_to_dict`가 자동 대응).
 
 ### 5.1 프로비저닝 용량 계산
 
@@ -302,6 +323,55 @@ DVPG_PROPERTIES: list[str] = ["name", "config.defaultPortConfig", "config.distri
 provisioned = (capacity - freeSpace) + uncommitted
 ```
 
+### 5.2 Custom Attributes (`custom_fields.py`) — FR-606
+
+`customValue`는 **키(int)와 값(str) 쌍만** 담고 있다. 필드 이름은 전역 `CustomFieldsManager`에 따로 있으므로
+**수집 시작 시 1회 조회하여 키→이름 사전을 만들고** 매핑 때 대조한다.
+
+```python
+async def load_custom_field_names(session: VCenterSession) -> dict[int, str]:
+    """CustomFieldsManager에서 키→필드명 사전을 만든다. 수집 1회당 1회 호출.
+
+    조회 전용이다. SetField·AddCustomFieldDef·RemoveCustomFieldDef는 절대 호출하지 않는다 (D-005).
+    """
+    def _load_sync() -> dict[int, str]:
+        manager = session.content.customFieldsManager
+        if manager is None:                      # 권한 부족 시 None이 올 수 있다
+            return {}
+        return {f.key: f.name for f in (manager.field or [])}
+
+    try:
+        return await asyncio.to_thread(_load_sync)
+    except Exception:
+        logger.info("Custom Attributes 조회 불가 — 빈 사전으로 진행")
+        return {}                                # 부분 실패 허용 — 나머지 수집은 정상 진행
+```
+
+매핑:
+
+```python
+def map_custom_attributes(
+    props: dict[str, Any], field_names: dict[int, str]
+) -> tuple[tuple[str, str], ...]:
+    """customValue(키·값)를 (이름, 값) 쌍으로 변환한다. 이름을 못 찾은 키는 버린다."""
+    return tuple(
+        (field_names[v.key], v.value)
+        for v in (props.get("customValue") or [])
+        if v.key in field_names and v.value
+    )
+```
+
+**주의**
+
+- **vSphere Tags와 다른 개념이다.** Custom Attributes는 SOAP(`CustomFieldsManager`), Tags는 REST 전용이다.
+  이름이 비슷해 혼동하기 쉽다. 이 어댑터는 Custom Attributes만 수집한다 (§1.1, D-010).
+- `CustomFieldsManager`에는 쓰기 메서드(`SetField` 등)가 있다. **읽기(`field` 속성)만 접근한다.**
+  §12의 `grep` 검사 대상에 `SetField`·`AddCustomFieldDef`·`RemoveCustomFieldDef`를 포함한다.
+- **[검증 필요]** Read-Only 역할 계정에서 `customFieldsManager.field`와 `customValue`가 조회되는지 실환경 확인.
+  조회되지 않으면 FR-606의 남은 절반도 수집 불가가 되며, 이때는 빈 값으로 두고 진행한다 (예외를 던지지 않는다).
+- 포탈 메타데이터를 **덮어쓰지 않는다.** 이 값은 참고용 초기값이며 `ResourceMetadata`와 별개 필드로 저장한다
+  (계획 02 §8, FR-602).
+
 ---
 
 ## 6. 매핑 (`mapper.py`)
@@ -310,7 +380,11 @@ provisioned = (capacity - freeSpace) + uncommitted
 
 ```python
 def map_virtual_machine(
-    connection_id: UUID, moid: str, props: dict[str, Any], observed_at: datetime
+    connection_id: UUID,
+    moid: str,
+    props: dict[str, Any],
+    observed_at: datetime,
+    field_names: dict[int, str],          # §5.2 — 수집 시작 시 1회 로드
 ) -> VirtualMachine:
     devices = props.get("config.hardware.device") or []
     disks = tuple(_map_disk(d) for d in devices if isinstance(d, vim.vm.device.VirtualDisk))
@@ -347,6 +421,7 @@ def map_virtual_machine(
         resource_pool=_moref_or_none(props.get("resourcePool")),
         folder_path=None,                          # parent 체인 해석은 §6.4
         annotation=props.get("config.annotation"),
+        custom_attributes=map_custom_attributes(props, field_names),   # §5.2 (vSphere Tags 아님)
         created_at=props.get("config.createDate"),
         last_seen_at=observed_at,
     )
@@ -588,10 +663,15 @@ class VCenterInventoryReader:
         self._pc = PropertyCollectorReader(self._session, page_size)
         self._outcomes: list[CollectionOutcome] = []
         self._host_cache: dict[str, Host] = {}
+        self._field_names: dict[int, str] = {}       # §5.2 — start_session 직후 1회 로드
 
     @property
     def capabilities(self) -> ReaderCapabilities:
-        return VCENTER_CAPABILITIES
+        return VCENTER_CAPABILITIES              # supports_native_tags=False 확정 (D-010)
+
+    async def start_session(self) -> None:
+        await self._session.start_session()
+        self._field_names = await load_custom_field_names(self._session)   # §5.2 — 1회만
 
     async def list_virtual_machines(self) -> AsyncIterator[VirtualMachine]:
         observed_at = datetime.now(UTC)
@@ -600,7 +680,9 @@ class VCenterInventoryReader:
         try:
             async for moid, props in self._pc.retrieve(vim.VirtualMachine, VM_PROPERTIES):
                 count += 1
-                yield map_virtual_machine(self._conn.connection_id, moid, props, observed_at)
+                yield map_virtual_machine(
+                    self._conn.connection_id, moid, props, observed_at, self._field_names
+                )
         except AuthenticationError:
             raise                                    # 세션 무효 — 전파
         except PortalError as exc:
@@ -630,6 +712,7 @@ async def _collect(
 | 3 | `property_specs.py` | **대상 vCenter에서 모든 속성 경로 실측** (§5 검증 필요) |
 | 4 | `collector.py` 페이징 | `maxObjects`(=2) 초과 자원에서 토큰 반복 동작, `missingSet` 처리 |
 | 5 | `mapper.py` — `map_guest_info` | Tools 상태 4가지 분기, 링크로컬 필터 |
+| 5b | `custom_fields.py` | 키→이름 사전 로드, manager가 `None`일 때 빈 사전, 이름 없는 키 폐기 |
 | 6 | `mapper.py` — 장치 | 디스크 Thin/Thick, MAC 정규화, 분산 포트그룹 키 |
 | 7 | `mapper.py` — VM 전체 | `spec.md` §2.2 필수 속성 매핑 |
 | 8 | `mapper.py` — Host/Cluster/Datastore/Network | 용량 바이트 통일, 오버커밋 계산 |
@@ -647,11 +730,14 @@ async def _collect(
 - [ ] MAC이 `00:50:56:aa:bb:cc` 형식으로 정규화
 - [ ] pyVmomi 예외가 어댑터 밖으로 나오지 않음
 - [ ] 세션이 실패 경로에서도 해제됨 (`__aexit__` 확인)
-- [ ] **코드에 쓰기 API 호출이 없음** — `Destroy_Task`, `PowerOffVM_Task`, `ReconfigVM_Task`, `CreateVM_Task`, `RelocateVM_Task` 등 (verifier가 직접 확인, D-005 한계)
+- [ ] Custom Attributes가 (이름, 값) 쌍으로 매핑되고, 조회 실패 시에도 나머지 수집이 진행됨
+- [ ] **패키지에 HTTP 클라이언트 import가 없음** — `httpx`·`requests`·`aiohttp` (D-010: REST 우회 금지)
+- [ ] **코드에 쓰기 API 호출이 없음** — `Destroy_Task`, `PowerOffVM_Task`, `ReconfigVM_Task`, `CreateVM_Task`, `RelocateVM_Task`, `SetField`, `AddCustomFieldDef`, `RemoveCustomFieldDef` 등 (verifier가 직접 확인, D-005 한계)
 
 ## 12. 주의사항
 
-- **쓰기 API 호출 금지.** arch-check는 메서드명만 보므로 `get_vm_status()` 안의 `PowerOffVM_Task()`를 잡지 못한다. `grep -rE "_Task\(" src/infrastructure/vcenter/`로 확인하고, 조회용 `_Task`(없음)를 제외한 모든 사용을 검토한다.
+- **쓰기 API 호출 금지.** arch-check는 메서드명만 보므로 `get_vm_status()` 안의 `PowerOffVM_Task()`를 잡지 못한다. `grep -rE "_Task\(|SetField|CustomFieldDef" src/infrastructure/vcenter/`로 확인하고, 조회용 `_Task`(없음)를 제외한 모든 사용을 검토한다.
+- **vSphere Tags를 구현하지 않는다** (D-010). "태그가 안 보인다"는 지적을 받으면 REST API 도입 결정을 먼저 받는다. `httpx`로 `/rest/com/vmware/cis/tagging`을 호출하는 것은 D-010 우회이며, 읽기 전용 자동 검사가 HTTP 동사를 잡지 못한다.
 - `DestroyView`는 뷰 정리이지 자원 삭제가 아니다. 래퍼 이름을 `release_view`로 두어 오해를 막는다.
 - pyVmomi는 동기 라이브러리다. `asyncio.to_thread` 없이 호출하면 이벤트 루프가 멈춘다.
 - `raise ... from None`으로 예외 체이닝을 끊는다. 원본 메시지에 접속 정보가 섞일 수 있다.
