@@ -47,6 +47,7 @@ Step 1(**화면 디자인 확정** + vCenter 1개 등록 → VM 목록)을 먼�
 | [08-api-server.md](08-api-server.md) | FastAPI 엔드포인트, 연결 관리 API | 4 | interface | FR-1xx, FR-11xx |
 | [11-web-ui.md](11-web-ui.md) **Part B** | 포탈 화면 구현, 대시보드 | 4 | interface | FR-12xx, FR-9xx |
 | [13-report-export.md](13-report-export.md) | 리포트, Excel/CSV 내보내기 | 4 | application·interface | FR-8xx |
+| [14-polestar-enrichment.md](14-polestar-enrichment.md) | **폴스타 연동 — 게스트 관점 자원 정보 보강** | — (Step 9 전용, Wave 4 이후) | domain·infra·app·interface | 신규 요건 (D-019), FR-304·501·601 |
 | [00-claude-skills-plugins.md](00-claude-skills-plugins.md) | Claude Code 스킬 활용 | — | — | — |
 
 ## 1. 의존 관계 그래프

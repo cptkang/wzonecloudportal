@@ -50,10 +50,21 @@ docker run -d --name wzoneportal-vcsim -p 8989:8989 vmware/vcsim:latest -l 0.0.0
 vcsim은 게스트 도구가 없으므로 게스트 정보는 `tools_not_installed`로 수집되는 것이 정상입니다.
 
 **Hyper-V/SCVMM은 시뮬레이터도, 컨테이너 실행도 불가합니다** (Windows 전용 — D-018).
-대신 `tests/ps_mocks/hyperv_cmdlet_mocks.ps1`의 목 cmdlet으로 수집 스크립트 **원본을 실제
-Windows PowerShell 5.1에서 실행**하는 검증이 `tests/integration/test_ps_scripts_live.py`에
-있습니다 (Windows가 아니면 skip). `host_scripts.py`를 수정하면
-`python scripts/generate_jea_role.py`로 JEA 역할 파일을 재생성해야 하며, 어긋나면 이 테스트가 실패합니다.
+온프레미스 SCVMM에는 REST API도 SDK도 없고 **PowerShell 모듈이 유일한 자동화 경로**입니다.
+대신 목 cmdlet으로 수집 스크립트 **원본을 실제 Windows PowerShell 5.1에서 실행**합니다
+(Windows가 아니면 skip). **조사 근거와 사용법은 `docs/06_scvmm_test_environment.md`에 있습니다.**
+
+| 목 자산 | 대상 | 테스트 |
+|---|---|---|
+| `tests/ps_mocks/hyperv_cmdlet_mocks.ps1` | 경로 A(Hyper-V/WMI/KVP) + 경로 B 최소 | `tests/integration/test_ps_scripts_live.py` |
+| `tests/ps_mocks/scvmm_fabric.ps1` | 경로 B(SCVMM) 전용 — 8개 시나리오, 쓰기 cmdlet 트랩 | `tests/integration/test_scvmm_mock_fabric.py` (리더까지 관통) |
+
+```bash
+python scripts/mock_scvmm.py --scenario large    # 목업 fabric을 직접 실행해 결과 확인
+```
+
+`host_scripts.py`를 수정하면 `python scripts/generate_jea_role.py`로 JEA 역할 파일을
+재생성해야 하며, 어긋나면 위 테스트가 실패합니다.
 
 **요건의 근거와 기술 참고 자료는 `docs/00_research_notes.md`에 있습니다.**
 - 요건이 왜 그렇게 정해졌는지 모를 때 → §10 조사→요건 추적표를 역참조

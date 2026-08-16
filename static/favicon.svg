@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- 사이드바 브랜드 마크(.sidebar__mark)와 동일 규격: 앰버(--kb) 라운드 사각형 + 잉크(--kb-ink) "IV".
+       폰트 렌더링 차이를 없애기 위해 글자는 패스로 직접 그린다. -->
+  <rect width="64" height="64" rx="12" fill="#ffbc00"/>
+  <g fill="#241f16">
+    <!-- I : 모노스페이스풍 상·하단 세리프 -->
+    <path d="M12 18h16v6h-4.5v16H28v6H12v-6h4.5V24H12z"/>
+    <!-- V -->
+    <path d="M33 18h7l3 20 3-20h7l-6.5 28h-7z"/>
+  </g>
+</svg>

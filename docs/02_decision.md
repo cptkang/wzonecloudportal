@@ -1105,3 +1105,84 @@ ROADMAP은 Hyper-V 어댑터를 Step 5에 두고, 앞당기더라도 Step 3 직�
 |------|-------------------|
 | ROADMAP 순서 유지 (Step 2 먼저) | 사용자가 조기 구현을 결정 |
 | 경로 B(SCVMM)만 먼저 구현 | 사용자가 경로 A 포함을 명시적으로 선택. 단, §20.1의 "실사 후 운영 등록" 원칙은 코드 존재와 별개로 유지 |
+
+---
+
+## D-019. 폴스타 연동 — 별도 Protocol + DBHub MCP 경유 + 스냅샷 저장
+
+| 항목 | 내용 |
+|------|------|
+| **결정일** | 2026-08-14 |
+| **상태** | 확정 (사용자 결정) |
+| **관련** | D-005, D-006, D-007, D-013, `plans/14-polestar-enrichment.md`, `plans/ROADMAP.md` §23.1 |
+
+### 배경
+
+폴스타는 사내 인프라 모니터링·자산 시스템으로, 게스트 OS 에이전트가 수집한 서버 사실
+(실제 OS·커널 버전·시리얼·NIC·조직 정보)을 사이트별 인스턴스에 보관한다.
+포탈이 하이퍼바이저에서 얻지 못하는 값들이며, 특히 **게스트 도구 미설치 VM**(FR-501의
+"수집 불가")을 폴스타가 대신 관측하고 있다.
+
+2026-08-14 사용자가 폴스타 연동을 요청했고, 범위 확인 결과 **① 게스트 OS 상세 보강**과
+**② 조직 메타데이터 초기값 확보** 2가지로 확정했다 (갭 분석·물리 서버 확장은 제외).
+
+### 결정
+
+1. **폴스타는 `HypervisorInventoryReader`에 넣지 않는다.** 하이퍼바이저가 아니며 VM을 소유하지
+   않는다. `src/domain/ports.py`에 **별도 Protocol `ServerFactReader`**를 정의한다.
+   `ConnectionKind`에 값을 추가하지 않는다 — 리더 팩토리에 미구현 분기를 남기지 않기 위함이다
+   (Known Mistakes 5번, D-012).
+2. **접근 경로는 collectorinfra의 DBHub MCP 서버(SSE) 경유다** (사용자 결정).
+   폴스타 DB 자격증명과 드라이버(DB2 `ibm_db` 포함)를 MCP 서버가 관리하므로
+   **포탈은 폴스타 DB 자격증명을 보관하지 않는다.**
+3. **폴스타 데이터를 포탈 DB에 스냅샷으로 저장한다** (`external_servers`).
+   조회 시점에 폴스타를 조인하지 않는다 — 외부 시스템 장애가 포탈 조회 장애가 되며
+   "조회는 저장소 경유"(D-007) 위반이다.
+4. **매칭은 규칙별로 자동 확정과 후보 제시를 나눈다.** UUID 계열(`cmm_resource.uuid` 또는 EAV
+   `SerialNumber` 정규화 — 어느 쪽이 유효한지는 실환경 확인 후 확정)과 MAC은 1:1일 때만
+   자동 확정, 호스트명·IP는 **후보로만** 제시하고 운영자가 확정한다. 오매칭은 CMDB 신뢰를
+   통째로 깨뜨리며 사람이 발견하기 전까지 정답처럼 보인다.
+   **매칭 대상은 vCenter·Hyper-V 호스트/클러스터·SCVMM 3경로의 VM 전부이며 동일 규칙을 적용한다**
+   (D-003 — 유스케이스에 하이퍼바이저 분기를 두지 않는다).
+5. **조회 대상 테이블을 `cmm_resource`·`core_config_prop` 2개로 고정한다.** 폴스타 DB에는
+   성능 통계(`cmm_metric_stat_h/d/m`), 알람(`cmm_alarm`·`cmm_alarm_active`·`cmm_alarm_def`·
+   `cmm_alarm_log`·`cmm_alarm_def_noti*`), 계정·ACL(`acc_role`·`acc_user_group`·
+   `acc_acl_resource_manager_type`), 레거시 lookup(`cmm_vendor`·`cmm_os`·`cmm_os_param`) 등
+   **더 많은 테이블이 있다.** 이 중
+   - 성능·알람은 `spec.md` §1.2의 명시적 비목표라 수집하지 않는다,
+   - 레거시 lookup은 값이 EAV와 불일치할 수 있어 조회하지 않는다 (collectorinfra D-028),
+   - `acc_*`는 담당자 메타데이터 제안에 쓸 수 있으나 **구조가 확인되지 않았다.** 착수 시
+     `get_table_schema`로 확인한 뒤 9-B에서만, 제안값 표시 용도로 조건부 사용한다.
+
+   조회 테이블 고정은 단위 테스트로 강제한다 (계획 14 §14).
+   **폴스타 전체 테이블 목록은 착수 시 `search_objects`로 직접 확인하고 계획서를 갱신한다** (§2.5).
+6. **착수 시점은 Step 4 이후의 신규 Step 9다** (사용자 결정). MAC·IP 수집(Step 4)이 끝나야
+   매칭 키가 충분해진다. 단, 메타데이터 제안(9-B)은 `resource_metadata` 테이블이 생기는
+   **Step 7 완료가 선행 조건**이다.
+
+### 파생 변경
+
+- `scripts/arch_check.py`에 `src.infrastructure.polestar` 등록. 특화 규칙 1(직접 import 금지)·
+  2(어댑터 교차 참조 금지) 대상에 포함한다. 등록하지 않으면 검사에서 조용히 제외된다.
+- 신규 테이블 4개: `external_sources`, `external_servers`, `external_server_links`,
+  `external_match_candidates`. **`virtual_machines`에는 컬럼을 추가하지 않는다** —
+  수집 경로와 보강 경로가 섞이면 재수집이 보강값을 덮어쓴다 (FR-602).
+- VM 상세 응답에 `external.polestar` 블록 추가. `status`를 `linked`/`candidate`/`unmatched`/
+  `not_configured` 4값으로 구분한다 ("값 없음 vs 수집 불가" 원칙의 연장).
+- `spec.md`에 외부 시스템 **인바운드** 연동 요건이 없다. FR-11xx는 포탈이 데이터를 제공하는
+  아웃바운드 API다. 이 연동은 신규 요건이며 spec 개정이 필요하다 (§미해결).
+
+### 고려한 대안
+
+| 대안 | 채택하지 않은 이유 |
+|------|-------------------|
+| `ConnectionKind`에 `polestar` 추가 | `VirtualMachine.connection_id`가 하이퍼바이저 연결을 가리키므로 VM 소속이 모호해지고 `AccessScope`(연결 단위 권한)가 무너진다 |
+| 폴스타 DB 직접 조회 (asyncpg / ibm_db) | 사용자가 MCP 경유를 선택. 포탈이 DB 자격증명과 DB2 드라이버(clidriver 설치)를 떠안지 않는 이점이 있다. 대신 MCP 서버 가용성에 동기화가 종속된다 |
+| 조회 시점 실시간 조인 | D-007 위반. 외부 장애가 포탈 화면 장애가 된다 |
+| 호스트명·IP까지 자동 확정 | 클론 VM·DHCP·VLAN 중복으로 오매칭이 조용히 쌓인다 |
+| Step 2와 병행 착수 | MAC·IP가 없어 매칭 키가 hostname·시리얼뿐이다. 사용자가 Step 4 이후를 선택 |
+
+### 미해결
+
+- `spec.md`에 인바운드 연동 요건(FR-13xx 가칭) 추가 여부 — 사용자 확정 필요
+- 계획 14 §15의 확인 항목 9건 (MCP 도달성, 인스턴스 목록, 시리얼 포맷 등)
