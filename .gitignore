@@ -50,3 +50,7 @@ venv/
 .venv/
 env/
 temp/
+
+# 오프라인 배포용 wheel 바이너리 (~55MB). 목록(requirements-*.txt)과 README는 커밋한다 —
+# 재생성 명령은 deploy/wheels/*/README.md
+# deploy/wheels/**/*.whl

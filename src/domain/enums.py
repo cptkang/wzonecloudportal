@@ -59,6 +59,9 @@ class ConnectionStatus(StrEnum):
     CREDENTIAL_ERROR = "credential_error"
     PERMISSION_ERROR = "permission_error"
     UNREACHABLE = "unreachable"
+    #: 접속·인증·권한은 정상인데 수집 도중 예상치 못한 오류가 났다.
+    #: 조치가 다르다 — 자격증명이 아니라 **포탈 쪽 문제**를 봐야 한다.
+    COLLECTION_ERROR = "collection_error"
 
 
 class ResourceType(StrEnum):

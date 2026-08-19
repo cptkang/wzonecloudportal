@@ -17,7 +17,8 @@ from pyVmomi import vim
 from src.config import Settings
 from src.domain.connection import Connection
 from src.domain.enums import CheckStage, ResourceType
-from src.domain.exceptions import AuthenticationError, PermissionError as DomainPermissionError
+from src.domain.exceptions import AuthenticationError
+from src.domain.exceptions import PermissionError as DomainPermissionError
 from src.domain.ports import CollectionOutcome, ConnectionCheckResult
 from src.domain.resource import VirtualMachine
 from src.infrastructure.checks import StageRunner
@@ -53,7 +54,7 @@ class VCenterInventoryReader:
     async def close_session(self) -> None:
         await self._session.close_session()
 
-    async def __aenter__(self) -> "VCenterInventoryReader":
+    async def __aenter__(self) -> VCenterInventoryReader:
         await self.start_session()
         return self
 
@@ -74,7 +75,7 @@ class VCenterInventoryReader:
         except AuthenticationError:
             # 세션 자체가 무효이므로 전파한다. 워커가 연결을 자격증명 오류로 전환한다.
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - 하이퍼바이저 예외를 도메인 예외로 변환하는 경계다 (계획 03 §5)
             error = translate_error(exc, secrets=self._secrets())
             if isinstance(error, AuthenticationError):
                 raise error from None
@@ -140,7 +141,7 @@ class VCenterInventoryReader:
             readable.add(ResourceType.VIRTUAL_MACHINE)
         except vim.fault.NoPermission:
             pass
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - 하이퍼바이저 예외를 도메인 예외로 변환하는 경계다 (계획 03 §5)
             raise translate_error(exc, secrets=self._secrets()) from None
 
         if not readable:

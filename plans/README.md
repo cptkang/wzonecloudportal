@@ -5,7 +5,8 @@
 
 ## ⚑ 먼저 읽을 것 — [ROADMAP.md](ROADMAP.md)
 
-아래 계획서 14종은 **영역별(수직) 설계서**다. 그대로 따라가면 모든 영역을 완성한 뒤에야 첫 화면이 뜬다.
+아래 계획서 01~14는 **영역별(수직) 설계서**다. 그대로 따라가면 모든 영역을 완성한 뒤에야 첫 화면이 뜬다.
+(15부터는 특정 Step의 실행 계획이며 여러 영역을 가로지른다.)
 
 **[ROADMAP.md](ROADMAP.md)** 는 이 계획서들을 동작하는 얇은 조각으로 다시 자른 **실행 순서**다.
 Step 1(**화면 디자인 확정** + vCenter 1개 등록 → VM 목록)을 먼저 만들어 실제 환경에 적용하고,
@@ -48,6 +49,7 @@ Step 1(**화면 디자인 확정** + vCenter 1개 등록 → VM 목록)을 먼�
 | [11-web-ui.md](11-web-ui.md) **Part B** | 포탈 화면 구현, 대시보드 | 4 | interface | FR-12xx, FR-9xx |
 | [13-report-export.md](13-report-export.md) | 리포트, Excel/CSV 내보내기 | 4 | application·interface | FR-8xx |
 | [14-polestar-enrichment.md](14-polestar-enrichment.md) | **폴스타 연동 — 게스트 관점 자원 정보 보강** | — (Step 9 전용, Wave 4 이후) | domain·infra·app·interface | 신규 요건 (D-019), FR-304·501·601 |
+| [15-resource-query-revision.md](15-resource-query-revision.md) | **자원(VM) 조회 기능 수정 — 표시 정보 카탈로그 + IP·검색·상세** | — (Step 4 전용, 07·04·05·06·11을 가로지름) | 전체 | FR-4xx, FR-501·502, 보완 FR-410~414·506~508 |
 | [00-claude-skills-plugins.md](00-claude-skills-plugins.md) | Claude Code 스킬 활용 | — | — | — |
 
 ## 1. 의존 관계 그래프

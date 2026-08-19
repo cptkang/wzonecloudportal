@@ -134,7 +134,6 @@ class UserAdminService:
         await self._record(
             actor,
             AuditAction.USER_APPROVE,
-            row.username,
             user_id,
             {"username": row.username, "role": role.value, "connection_count": len(ids)},
         )
@@ -147,7 +146,6 @@ class UserAdminService:
         await self._record(
             actor,
             AuditAction.USER_REJECT,
-            row.username,
             user_id,
             {"username": row.username, "reason": reason},
         )
@@ -161,7 +159,7 @@ class UserAdminService:
             await self._guard_last_admin(user_id)
         await self._users.set_status(user_id, UserStatus.DISABLED)
         await self._record(
-            actor, AuditAction.USER_DISABLE, row.username, user_id, {"username": row.username}
+            actor, AuditAction.USER_DISABLE, user_id, {"username": row.username}
         )
 
     async def enable(self, actor: AccessScope, user_id: UUID) -> None:
@@ -170,7 +168,7 @@ class UserAdminService:
         _check_transition(UserStatus(row.status), UserStatus.ACTIVE)
         await self._users.set_status(user_id, UserStatus.ACTIVE, approved_by=actor.username)
         await self._record(
-            actor, AuditAction.USER_ENABLE, row.username, user_id, {"username": row.username}
+            actor, AuditAction.USER_ENABLE, user_id, {"username": row.username}
         )
 
     async def change_role(self, actor: AccessScope, user_id: UUID, role: Role) -> None:
@@ -186,7 +184,6 @@ class UserAdminService:
         await self._record(
             actor,
             AuditAction.USER_ROLE_CHANGE,
-            row.username,
             user_id,
             {"username": row.username, "role": role.value},
         )
@@ -202,7 +199,6 @@ class UserAdminService:
         await self._record(
             actor,
             AuditAction.SCOPE_UPDATE,
-            row.username,
             user_id,
             {"username": row.username, "connection_count": len(connection_ids)},
         )
@@ -219,7 +215,6 @@ class UserAdminService:
         await self._record(
             actor,
             AuditAction.USER_PASSWORD_RESET,
-            row.username,
             user_id,
             {"username": row.username},  # 값이 아니라 "발급됨" 사실만
         )
@@ -249,7 +244,6 @@ class UserAdminService:
         self,
         actor: AccessScope,
         action: AuditAction,
-        username: str,
         user_id: UUID,
         raw: dict[str, object],
     ) -> None:

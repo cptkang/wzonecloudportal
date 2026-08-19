@@ -20,9 +20,11 @@ from src.domain.connection import Connection
 from src.domain.enums import CheckStage, ResourceType
 from src.domain.exceptions import (
     AuthenticationError,
-    PermissionError as DomainPermissionError,
     PortalError,
     ValidationError,
+)
+from src.domain.exceptions import (
+    PermissionError as DomainPermissionError,
 )
 from src.domain.ports import CollectionOutcome, ConnectionCheckResult
 from src.domain.resource import VirtualMachine
@@ -59,7 +61,7 @@ class ScvmmInventoryReader:
     async def close_session(self) -> None:
         await self._session.close_session()
 
-    async def __aenter__(self) -> "ScvmmInventoryReader":
+    async def __aenter__(self) -> ScvmmInventoryReader:
         await self.start_session()
         return self
 

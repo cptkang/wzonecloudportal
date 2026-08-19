@@ -97,4 +97,4 @@ class LocalPowerShellRunner:
         return parse_ps_json(raw)
 
 
-__all__ = ["LocalPowerShellRunner", "SCENARIOS", "SCVMM_FABRIC", "HYPERV_MOCKS", "POWERSHELL"]
+__all__ = ["HYPERV_MOCKS", "POWERSHELL", "SCENARIOS", "SCVMM_FABRIC", "LocalPowerShellRunner"]

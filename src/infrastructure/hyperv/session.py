@@ -91,7 +91,7 @@ class HyperVSession:
     async def start_session(self) -> None:
         try:
             self._pool = await asyncio.to_thread(self._open_sync)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - 하이퍼바이저 예외를 도메인 예외로 변환하는 경계다 (계획 03 §5)
             await self._dispose_wsman()
             # 원본 예외 체이닝을 끊는다 — 메시지에 접속 정보가 섞일 수 있다 (계획 10 §5.2)
             raise translate_error(exc, secrets=self.secrets()) from None
@@ -114,12 +114,12 @@ class HyperVSession:
         if self._wsman is not None:
             try:
                 await asyncio.to_thread(self._wsman.close)
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception:  # noqa: BLE001 - 정리 실패는 수집 결과를 바꾸지 않는다
+                logger.debug("WSMan 종료 실패 (무시)")
             finally:
                 self._wsman = None
 
-    async def __aenter__(self) -> "HyperVSession":
+    async def __aenter__(self) -> HyperVSession:
         await self.start_session()
         return self
 

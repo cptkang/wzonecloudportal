@@ -46,13 +46,17 @@ class VmSummaryResponse(BaseModel):
     power_state: PowerState
     vcpu_count: int | None
     memory_mb: int | None
+    #: VM 구성값 OS (`config.guestFullName`). **게스트 도구 없이도 수집되는 값**이라
+    #: `guest` 안에 넣지 않는다 — 도구 산출물이 아니다.
+    #: 게스트 도구가 없는 VM에서 OS를 알 수 있는 유일한 경로다 (ROADMAP §5.3, FR-304).
+    configured_os: str | None
     guest: GuestInfoResponse
     host_native_id: str | None
     lifecycle: ResourceLifecycle
     last_seen_at: datetime
 
     @classmethod
-    def from_summary(cls, vm: VmSummary) -> "VmSummaryResponse":
+    def from_summary(cls, vm: VmSummary) -> VmSummaryResponse:
         collected = vm.guest_availability is GuestInfoAvailability.AVAILABLE
         return cls(
             resource_id=vm.resource_id,
@@ -64,6 +68,7 @@ class VmSummaryResponse(BaseModel):
             power_state=vm.power_state,
             vcpu_count=vm.vcpu_count,
             memory_mb=vm.memory_mb,
+            configured_os=vm.configured_os,
             guest=GuestInfoResponse(
                 availability=vm.guest_availability,
                 is_collected=collected,

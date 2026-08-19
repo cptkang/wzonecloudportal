@@ -25,8 +25,10 @@ from src.domain.enums import CheckStage, ConnectionKind, ResourceType
 from src.domain.exceptions import (
     AuthenticationError,
     CollectionError,
-    PermissionError as DomainPermissionError,
     PortalError,
+)
+from src.domain.exceptions import (
+    PermissionError as DomainPermissionError,
 )
 from src.domain.ports import CollectionOutcome, ConnectionCheckResult
 from src.domain.resource import VirtualMachine
@@ -73,7 +75,7 @@ class HyperVHostInventoryReader:
     async def close_session(self) -> None:
         await self._session.close_session()
 
-    async def __aenter__(self) -> "HyperVHostInventoryReader":
+    async def __aenter__(self) -> HyperVHostInventoryReader:
         await self.start_session()
         return self
 

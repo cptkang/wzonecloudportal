@@ -53,7 +53,7 @@ class AuditRepository:
                 )
             )
             await self._session.flush()
-        except Exception:  # noqa: BLE001 - 감사 실패로 조회·수정이 막히면 안 된다
+        except Exception:
             logger.exception(
                 "감사 로그 기록 실패",
                 extra={"action": event.action.value, "actor": event.actor},

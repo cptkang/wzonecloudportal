@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request
@@ -175,7 +175,7 @@ async def get_access_scope(
 Scope = Annotated[AccessScope, Depends(get_access_scope)]
 
 
-def require(*permissions: Permission) -> Callable[..., AuthenticatedUser]:
+def require(*permissions: Permission) -> Callable[..., Awaitable[AuthenticatedUser]]:
     """라우터용 권한 검사. 유스케이스에서도 재검사한다 (이중 방어, 계획 09 §6.1)."""
 
     async def _check(user: ActiveUser) -> AuthenticatedUser:

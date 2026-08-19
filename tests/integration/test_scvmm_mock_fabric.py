@@ -202,7 +202,7 @@ async def test_permission_failure_is_reported_as_outcome_not_exception() -> None
 async def test_probe_reports_readable_types_and_role() -> None:
     reader = make_reader("normal")
     readable: set[ResourceType] = set()
-    detail = await reader._check_authorized(readable)  # noqa: SLF001 - 프로브 단계 단독 검증
+    detail = await reader._check_authorized(readable)
     assert ResourceType.VIRTUAL_MACHINE in readable
     assert detail is not None and "ReadOnlyAdmin" in detail
 
@@ -211,14 +211,14 @@ async def test_missing_module_is_a_wrong_target_not_an_auth_failure() -> None:
     """SCVMM이 아닌 서버를 등록한 경우다. 인증 실패로 표시하면 관리자가 엉뚱한 조치를 한다 (§10)."""
     reader = make_reader("no_module")
     with pytest.raises(ValidationError) as exc:
-        await reader._check_authorized(set())  # noqa: SLF001
+        await reader._check_authorized(set())
     assert exc.value.field == "kind"
 
 
 async def test_connection_failure_surfaces_as_portal_error() -> None:
     reader = make_reader("connect_fail")
     with pytest.raises(PortalError):
-        await reader._check_authorized(set())  # noqa: SLF001
+        await reader._check_authorized(set())
 
 
 # ── 읽기 전용 강제 (D-005, §14) ──────────────────────────────

@@ -38,16 +38,18 @@ class PowerShellRunner:
             )
         return "".join(str(o) for o in output)
 
-    async def invoke_json(self, script: str, params: dict[str, Any] | None = None) -> list[dict]:
+    async def invoke_json(
+        self, script: str, params: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
         """스크립트를 실행하고 JSON 출력을 리스트로 정규화한다."""
         try:
             raw = await asyncio.to_thread(self._invoke_sync, script, params)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - 하이퍼바이저 예외를 도메인 예외로 변환하는 경계다 (계획 03 §5)
             raise translate_error(exc, secrets=self._session.secrets()) from None
         return parse_ps_json(raw)
 
 
-def parse_ps_json(raw: str) -> list[dict]:
+def parse_ps_json(raw: str) -> list[dict[str, Any]]:
     """ConvertTo-Json 출력을 파싱한다.
 
     PowerShell은 항목이 1개일 때 배열이 아닌 객체를 반환하므로 정규화가 필요하다 (§5.1).

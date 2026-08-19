@@ -84,9 +84,16 @@ class ConnectionRepository:
             await self._session.flush()
 
     async def mark_attempt(self, connection_id: UUID) -> None:
+        """수집 시도를 기록한다. **이전 오류를 지운다.**
+
+        지우지 않으면 UI 폴링이 이전 수집의 `last_error`를 보고 **시작하자마자
+        실패로 판정한다** (`static/js/connections.js`의 `connState`). 실패는
+        이번 시도의 결과로 `mark_failure`가 다시 채운다.
+        """
         row = await self._session.get(ConnectionRow, connection_id)
         if row is not None:
             row.last_attempt_at = datetime.now(UTC)
+            row.last_error = None
             await self._session.flush()
 
     async def mark_success(self, connection_id: UUID, at: datetime) -> None:

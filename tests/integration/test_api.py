@@ -298,9 +298,9 @@ async def test_viewer_cannot_manage_connections_or_users(
 
 async def test_scope_filters_visible_vms(client: AsyncClient, admin: str, session) -> None:
     """FR-1003 — 범위 밖 자원이 목록에 보이지 않는다."""
-    from src.infrastructure.repository.vm_repo import VirtualMachineRepository
     from datetime import UTC, datetime
 
+    from src.infrastructure.repository.vm_repo import VirtualMachineRepository
     from tests.fakes.fake_reader import make_vm
 
     await client.post(
@@ -494,6 +494,48 @@ async def test_vm_list_uses_paged_response_and_nested_guest(
     assert missing["unavailable_reason"] == "게스트 도구 미설치"
 
 
+async def test_configured_os_is_exposed_even_without_guest_tools(
+    client: AsyncClient, admin: str, session
+) -> None:
+    """구성값 OS는 게스트 도구 없이도 수집된다 — 응답에서 빠지면 화면에서 사라진다.
+
+    ROADMAP §5.3: "게스트 OS ← guest.guestFullName → **없으면 config.guestFullName**".
+    도구 미설치 VM에서 알 수 있는 유일한 OS 정보이므로 `guest` 밖 필드로 내려보낸다.
+    """
+    from datetime import UTC, datetime
+
+    from src.domain.enums import GuestInfoAvailability
+    from src.infrastructure.repository.vm_repo import VirtualMachineRepository
+    from tests.fakes.fake_reader import make_vm
+
+    await _login(client, "admin", ADMIN_PASSWORD)
+    conn = await _create_connection(client, "vCenter C", "vcsa-c.example.invalid")
+
+    repo = VirtualMachineRepository(session)
+    await repo.upsert_virtual_machines(
+        conn,
+        [
+            make_vm(
+                connection_id=conn,
+                name="no-tools-vm",
+                native_id="c1",
+                guest_availability=GuestInfoAvailability.TOOLS_NOT_INSTALLED,
+                configured_os="Microsoft Windows Server 2012 (64-bit)",
+            )
+        ],
+        datetime.now(UTC),
+    )
+    await session.commit()
+
+    item = (await client.get("/api/v1/virtual-machines")).json()["items"][0]
+
+    # 게스트 정보는 수집 불가로 유지된다 — 구성값이 있다고 도구가 있는 것이 아니다
+    assert item["guest"]["is_collected"] is False
+    assert item["guest"]["os_name"] is None
+    # 그럼에도 구성값 OS는 내려온다
+    assert item["configured_os"] == "Microsoft Windows Server 2012 (64-bit)"
+
+
 async def test_unknown_sort_column_returns_422(client: AsyncClient, admin: str) -> None:
     await _login(client, "admin", ADMIN_PASSWORD)
     res = await client.get("/api/v1/virtual-machines?sort_by=name;DROP+TABLE+users")
@@ -638,3 +680,49 @@ async def test_temporary_password_forces_change_before_inventory(
             )
         ).status_code == 204
         assert (await viewer_client.get("/api/v1/virtual-machines")).status_code == 200
+
+
+# ── 수집 중복 실행 차단 (T5) ────────────────────────────────────
+#
+# UI 버튼 비활성화만으로는 다른 탭·다른 관리자·API 직접 호출을 막지 못한다.
+# 같은 연결을 동시에 수집하면 `uq_vm_native` 제약에 걸려 정상 수집이 실패로 뒤집힌다.
+
+
+async def test_collection_already_running_returns_202_not_an_error(
+    client: AsyncClient, admin: str
+) -> None:
+    """이미 진행 중은 **오류가 아니다** — 4xx로 만들면 UI가 오류 토스트를 띄운다."""
+    from src.api.routes import connections as conn_routes
+
+    await _login(client, "admin", ADMIN_PASSWORD)
+    conn_id = await _create_connection(client, "vCenter D", "vcsa-d.example.invalid")
+
+    conn_routes._running_collections.add(conn_id)
+    try:
+        res = await client.post(f"/api/v1/connections/{conn_id}/collect")
+    finally:
+        conn_routes._running_collections.discard(conn_id)
+
+    assert res.status_code == 202
+    assert res.json()["status"] == "already_running"
+
+
+async def test_collection_lock_is_released_so_it_can_run_again(
+    client: AsyncClient, admin: str, session_factory
+) -> None:
+    """성공·실패 어느 쪽이든 풀려야 한다. 풀리지 않으면 그 연결은 영영 수집 불가다."""
+    from src.api.routes import connections as conn_routes
+    from src.config import get_settings
+
+    await _login(client, "admin", ADMIN_PASSWORD)
+    conn_id = await _create_connection(client, "vCenter E", "vcsa-e.example.invalid")
+
+    conn_routes._running_collections.add(conn_id)
+    # 주소가 `.invalid`라 연결에 실패한다 — 실패 경로에서도 풀리는지가 요점이다
+    await conn_routes._run_collection(session_factory, get_settings(), conn_id)
+
+    assert conn_id not in conn_routes._running_collections
+
+    res = await client.post(f"/api/v1/connections/{conn_id}/collect")
+    assert res.json()["status"] == "accepted"
+    conn_routes._running_collections.discard(conn_id)

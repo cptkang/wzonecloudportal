@@ -18,7 +18,10 @@ from src.infrastructure.db.models import Base
 
 config = context.config
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # **`disable_existing_loggers=False`가 필수다.** 기본값(True)은 이 시점에 이미
+    # 만들어진 로거를 **전부 비활성화**한다. 같은 프로세스에서 마이그레이션을 돌리면
+    # (테스트, 또는 앱 기동 시 자동 업그레이드) 애플리케이션 로그가 통째로 사라진다.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = Base.metadata
 config.set_main_option("sqlalchemy.url", get_settings().database_url)

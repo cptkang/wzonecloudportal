@@ -38,7 +38,7 @@ class GuestInfo:
     def primary_ipv4(self) -> str | None:
         return self.ipv4_addresses[0] if self.ipv4_addresses else None
 
-    def with_fallback(self, previous: "GuestInfo | None") -> "GuestInfo":
+    def with_fallback(self, previous: GuestInfo | None) -> GuestInfo:
         """수집 불가 시 이전 값을 유지한 새 인스턴스를 반환한다.
 
         도구가 멈춘 것이지 VM의 OS·IP가 없어진 것이 아니다.

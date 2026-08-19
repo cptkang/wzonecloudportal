@@ -43,10 +43,17 @@ class VCenterSession:
         return f"{about.fullName}"
 
     def _build_ssl_context(self) -> ssl.SSLContext | None:
-        """TLS 검증 정책에 따른 컨텍스트 (FR-115)."""
+        """TLS 검증 정책에 따른 컨텍스트 (FR-115).
+
+        VCF 9는 TLS 1.3이 기본이고 기본 프로파일이 1.2를 폴백으로 남긴다.
+        강화 프로파일(`NIST_2024_TLS_13_ONLY`)을 쓰는 사이트도 있으므로 하한을 명시해
+        의도를 고정한다 — 인증서 검증을 끄더라도 프로토콜까지 낮추지는 않는다
+        (계획 04 §3.1, D-020).
+        """
         if self._conn.verify_tls:
             return None  # 기본 검증 사용
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        ctx.minimum_version = ssl.TLSVersion.TLSv1_2
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
         return ctx
@@ -64,7 +71,7 @@ class VCenterSession:
     async def start_session(self) -> None:
         try:
             self._si = await asyncio.to_thread(self._connect_sync)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - 하이퍼바이저 예외를 도메인 예외로 변환하는 경계다 (계획 03 §5)
             # 원본 예외 체이닝을 끊는다 — 메시지에 접속 정보가 섞일 수 있다 (계획 10 §5.2)
             raise translate_error(
                 exc, secrets=(self._conn.password.get_secret_value(),)
@@ -84,7 +91,7 @@ class VCenterSession:
         finally:
             self._si = None
 
-    async def __aenter__(self) -> "VCenterSession":
+    async def __aenter__(self) -> VCenterSession:
         await self.start_session()
         return self
 

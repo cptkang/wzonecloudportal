@@ -35,12 +35,12 @@ class _FakePropertyCollector:
         self.continue_calls = 0
         self.seen_tokens: list[str] = []
 
-    def RetrievePropertiesEx(self, specSet, options):  # noqa: N802 - pyVmomi 명명 규약
+    def RetrievePropertiesEx(self, specSet, options):
         self.retrieve_calls += 1
         objects, token = self._pages[0]
         return SimpleNamespace(objects=objects, token=token)
 
-    def ContinueRetrievePropertiesEx(self, token):  # noqa: N802
+    def ContinueRetrievePropertiesEx(self, token):
         self.continue_calls += 1
         self.seen_tokens.append(token)
         index = next(i for i, (_, t) in enumerate(self._pages) if t == token) + 1
@@ -58,7 +58,7 @@ class _FakeSession:
         session = self
 
         class _ViewManager:
-            def CreateContainerView(self, container, type, recursive):  # noqa: N802, A002
+            def CreateContainerView(self, container, type, recursive):
                 return _FakeView(session)
 
         return SimpleNamespace(
@@ -70,7 +70,7 @@ class _FakeView:
     def __init__(self, session: _FakeSession) -> None:
         self._session = session
 
-    def DestroyView(self) -> None:  # noqa: N802
+    def DestroyView(self) -> None:
         self._session.view_destroyed = True
 
 
@@ -116,7 +116,7 @@ async def test_view_is_released_even_on_error() -> None:
     """DestroyView 누락 시 vCenter에 뷰 객체가 누적된다."""
 
     class _Failing(_FakePropertyCollector):
-        def RetrievePropertiesEx(self, specSet, options):  # noqa: N802
+        def RetrievePropertiesEx(self, specSet, options):
             raise RuntimeError("boom")
 
     session = _FakeSession(_Failing([]))

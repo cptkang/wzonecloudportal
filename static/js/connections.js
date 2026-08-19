@@ -136,10 +136,16 @@ async function reload() {
 
 async function startCollection(conn) {
   try {
-    await api.startCollection(conn.connection_id);
+    const res = await api.startCollection(conn.connection_id);
     page.collecting.add(conn.connection_id);
     renderConnections();
-    showToast(`${conn.display_name} 수집을 시작했습니다.`);
+    // 서버가 중복 실행을 막는다 — 다른 탭이나 다른 관리자가 이미 시작했을 수 있다.
+    // 오류가 아니므로 202로 오며, 어느 쪽이든 완료를 봐야 하니 폴링은 똑같이 시작한다.
+    showToast(
+      res && res.status === 'already_running'
+        ? `${conn.display_name} 수집이 이미 진행 중입니다.`
+        : `${conn.display_name} 수집을 시작했습니다.`
+    );
     startPolling();
   } catch (err) {
     showToast(err.message || '수집을 시작하지 못했습니다.', true);

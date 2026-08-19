@@ -132,10 +132,10 @@ def resolve_layer(module_path: str) -> Layer | None:
     best: Layer | None = None
     best_len = 0
     for prefix, layer in MODULE_LAYER_MAP.items():
-        if module_path == prefix or module_path.startswith(prefix + "."):
-            if len(prefix) > best_len:
-                best = layer
-                best_len = len(prefix)
+        matches = module_path == prefix or module_path.startswith(prefix + ".")
+        if matches and len(prefix) > best_len:
+            best = layer
+            best_len = len(prefix)
     return best
 
 
@@ -205,9 +205,8 @@ def extract_imports(file_path: Path) -> list[ImportInfo]:
                         line=node.lineno,
                         statement=f"import {alias.name}",
                     ))
-        elif isinstance(node, ast.ImportFrom):
-            if node.module and node.module.startswith("src."):
-                imports.append(ImportInfo(
+        elif isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("src."):
+            imports.append(ImportInfo(
                     module=node.module,
                     line=node.lineno,
                     statement=f"from {node.module} import ...",
@@ -479,7 +478,10 @@ def print_text_report(result: CheckResult, project_root: Path, verbose: bool = F
         print(f"{c['bold']}--- 계층 의존성 매트릭스 ---{c['reset']}\n")
         actual_deps = collect_layer_deps(project_root)
 
-        header = f"{'From \\ To':<16}" + "".join(f"{l:<16}" for l in LAYERS_ORDER)
+        # f-string 안의 백슬래시는 Python 3.12+ 문법이다. 지원 하한이 3.11이므로
+        # 상수로 빼낸다 (`requires-python = ">=3.11"`).
+        corner = "From \\ To"
+        header = f"{corner:<16}" + "".join(f"{layer:<16}" for layer in LAYERS_ORDER)
         print(f"  {header}")
         print(f"  {'─' * (16 + 16 * len(LAYERS_ORDER))}")
         for from_l in LAYERS_ORDER:

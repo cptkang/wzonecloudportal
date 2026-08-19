@@ -27,6 +27,9 @@ Step 1은 **화면 디자인 확정(Claude Design) + vCenter 1개 등록 → 수
 **실서버 배포 절차는 `docs/05_deployment.md`에 있습니다** — systemd·nginx·PostgreSQL 최소 권한 구성,
 검증 절차, 문제 해결까지 포함합니다. 아래는 로컬 개발용입니다.
 
+**RHEL 9 폐쇄망 설치는 `docs/07_rhel_install_guide.md`** — 반입 물자(wheel 번들·RPM),
+오프라인 설치, 스키마 생성, 데이터 마이그레이션 3종(스키마·DB 이관·외부 적재)을 다룹니다 (D-021).
+
 ## 개발 환경
 
 ```bash
@@ -37,6 +40,24 @@ cp .env.example .env        # 키 생성: python -c "import os,base64;print(base
 python -m alembic upgrade head
 python -m uvicorn src.main:app --port 8080     # http://127.0.0.1:8080/login.html
 python -m pytest             # 통합 테스트는 위 컨테이너에 wzoneportal_test DB를 만들어 씁니다
+```
+
+**단위 테스트는 DB 없이 돕니다.** DB 픽스처는 `tests/integration/conftest.py`에만 있습니다 —
+루트 `conftest.py`에 `autouse` DB 픽스처를 두면 순수 매퍼 테스트까지 PostgreSQL을 요구하게 됩니다.
+
+```bash
+python -m pytest tests/unit -q      # DB 불필요 — 1초대. 코드 수정 중에는 이것만 돌립니다
+python -m pytest tests/integration  # DB 필요
+```
+
+**커밋 전 품질 게이트 4종**을 통과해야 합니다. CI(`.github/workflows/ci.yml`)가 같은 검사를
+**Python 3.11(지원 하한)과 3.13**에서 실행합니다 — 하한에서만 나는 문법 오류를 잡기 위함입니다.
+
+```bash
+python -m ruff check src tests scripts   # noqa가 가리키는 룰이 실제로 켜져 있습니다
+python -m mypy src                       # strict. pyVmomi/jose만 모듈 단위로 완화 (pyproject)
+python scripts/arch_check.py --ci        # 계층·읽기 전용 규칙
+python -m pytest tests/unit -q
 ```
 
 **vCenter 없이 수집 경로를 테스트하려면 vcsim(govmomi vCenter 시뮬레이터)을 씁니다.**
@@ -244,3 +265,8 @@ Claude Code 스킬: `/arch-check` 로 호출 가능 (`.claude/skills/arch-check.
 | 2026-08-07 | `ConnectionKind.SCVMM`을 정의해 두고 리더 팩토리는 `NotImplementedError`를 던지는 상태로 방치 | enum에 값을 넣는 것과 경로를 구현하는 것을 분리해 두고, **미구현 값이 남았는지 추적하지 않음** | enum에 미구현 값을 두지 않거나, 두면 **계획서 완료 기준에 "미구현 분기 없음"을 명시**한다 (D-012) |
 | 2026-08-07 | DB 세션을 FastAPI `yield` 의존성 teardown에서 커밋하여, 등록 직후 목록 조회에 방금 만든 레코드가 빠짐 | teardown이 **응답 전송 뒤에** 실행된다. `httpx.ASGITransport` 테스트로는 인프로세스라 재현되지 않아 통과했다 | 쓰기 엔드포인트는 핸들러에서 명시적으로 커밋한다 (D-017). **요청 순서에 의존하는 동작은 ASGITransport가 아니라 실서버로 확인**한다 |
 | 2026-08-07 | `alembic.ini`에 한글 주석을 넣어 `UnicodeDecodeError: 'cp949' codec` 로 마이그레이션이 기동 불가 | `configparser`가 ini를 **시스템 로캘 인코딩**으로 읽는다. UTF-8이 아니다 | `alembic.ini`·`setup.cfg` 등 ini 계열 파일은 **ASCII만** 쓴다. 설명은 `.py`에 둔다 |
+| 2026-08-19 | 계획 04(vCenter 어댑터)가 지원 **하한(6.5)** 기준으로만 작성되어, 최신 VCF 9.x에서 **연결 등록조차 막히는 인증 변경**을 포함해 상한 검증 항목이 0건이었다 | 요건(CST-10)이 "최소 버전"만 정의했고, 계획서가 그 문구를 그대로 따라가며 상한을 묻지 않았다. 검증에 쓴 vcsim도 6.5로 응답해 하한 쪽 증거만 쌓였다 | 외부 시스템 연동 계획에는 **지원 범위를 하한·상한 양방향으로 명시**한다. "최소 버전 N 이상"만 있는 요건을 보면 **상한을 되묻는다**. 시뮬레이터 통과는 그 시뮬레이터가 보고하는 버전에 대한 증거일 뿐이다 (D-020) |
+| 2026-08-19 | `logger.info(..., extra={"created": ...})` — `created`가 **LogRecord 예약 필드**라 logging이 `KeyError`를 던졌다. 이 예외가 `except`에 잡혀 **모든 정상 수집이 "수집 중 예외"로 기록**되었다 | `extra` 키가 LogRecord 속성명과 충돌하는지 확인하지 않았다. 데이터는 커밋된 뒤라 화면에는 정상으로 보여 **로그를 봐야만 드러났다** | `extra` 키에 `created`·`module`·`name`·`message`·`filename`·`process` 등 LogRecord 속성명을 쓰지 않는다. **ruff `G` 룰이 이것을 잡는다** — `pyproject.toml`의 `lint.select`에서 빼지 않는다 |
+| 2026-08-19 | `migrations/env.py`의 `fileConfig(config.config_file_name)`가 **기존 로거를 전부 비활성화**했다. 같은 프로세스에서 마이그레이션을 돌리면 애플리케이션 로그가 통째로 사라진다 | `logging.config.fileConfig`의 `disable_existing_loggers` **기본값이 True**다. alembic 템플릿이 그대로 쓴다 | `fileConfig(..., disable_existing_loggers=False)`로 호출한다. 로그 검증 테스트가 "레코드 0건"으로 실패하면 이것을 먼저 의심한다 |
+| 2026-08-19 | RHEL 9 설치 가이드에 "AppStream의 PostgreSQL 16"이라고 썼으나, **기본 스트림은 13**이라 D-013 하한(16)에 미달이었다. 로컬 저장소로 만든 modular 패키지가 설치 거부되는 것도 놓쳤다 | 배포판이 제공하는 **기본 버전**을 확인하지 않고 "저장소에 있다"는 사실만으로 단정했다 | 외부 패키지의 버전·설치 가능 여부는 **대상 OS 컨테이너에서 실제로 실행해** 확인한다. `dnf module list`의 `[d]`(기본)와 실제 `dnf info` 버전은 다르다 (D-021) |
+| 2026-08-19 | `# noqa: BLE001`·`SLF001`·`ARG001`이 코드에 있었지만 `pyproject.toml`의 ruff 설정에 `lint.select`가 없어 **해당 룰이 애초에 꺼져** 있었다. `ruff`·`mypy`는 설치조차 되어 있지 않았고 CI도 없었다 | 린터 설정을 작성만 하고 **실제로 실행해 위반이 잡히는지 확인하지 않았다** | 품질 게이트는 도입 시 **일부러 위반을 넣어 실패하는지** 확인한다. `noqa`를 쓸 때는 그 룰이 `lint.select`에 있는지 함께 본다 (ruff `RUF100`이 불필요한 noqa를 잡아 준다) |

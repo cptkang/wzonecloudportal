@@ -4,6 +4,12 @@
 > 담당 요건: FR-203, FR-106, FR-301, FR-501, FR-606(부분), `spec.md` §2.2 vCenter 출처 열
 > 의존: 02, 03 · 관련 결정: D-003, D-005, D-007, **D-010**
 
+> **진행 현황 (2026-08-16 갱신)**: Step 1 축소판 구현 완료 (2026-08-07) + vcsim 관통 검증 (2026-08-14).
+> **실 vCenter 실측(Step 2, ROADMAP §15)은 미완.** 절별 대조·편차·검증 결과는 §13, 완료 기준 판정은 §11을 본다.
+>
+> **최신 버전 대응 검토 (2026-08-19)**: 이 계획서는 지원 **하한(6.5)** 기준으로만 작성되어 있었고
+> **상한(VCF 9.x) 대응 근거가 없었다.** 검토 결과를 §1.2·§3.2·§14에 반영했다. 미해결 결정은 §14.4.
+
 ## 1. 목적
 
 pyVmomi로 vCenter 인벤토리를 수집하여 공통 도메인 모델로 반환한다.
@@ -20,6 +26,10 @@ vCenter 접근은 **vSphere Web Services API (SOAP/vim25) 하나만 사용한다
 | vSphere Automation API (REST) | 서버측 일괄 조회 메커니즘이 없어 자원 수만큼 왕복 발생 → D-007 위반 |
 | VI/JSON | vSphere 8.0 U1+ 전용. 지원 하한이 6.5이므로 사용 불가 (`spec.md` CST-10) |
 
+> **이 전제는 최신 버전에서도 유효하다 (2026-08-19 확인).** vSphere Web Services API(vim25/SOAP)는
+> **VCF 9.0에서 deprecated도 removed도 아니다.** VCF SDK 안에서 배포 경로만 `vsphere-ws` → `sdk/vim25`로 바뀌었다.
+> 따라서 D-010(SOAP 단일 경로)은 상한을 VCF 9로 올려도 무너지지 않는다. 근거는 §14.5.
+
 **따라서 vSphere Tags는 수집하지 않는다.** Tags는 REST 전용 API이며, `ReaderCapabilities.supports_native_tags = False`는
 "조사 미완"이 아니라 **미지원 확정**이다 (계획 03 §3).
 
@@ -28,6 +38,29 @@ Custom Attributes는 SOAP의 `CustomFieldsManager` 소관이라 REST 없이 수�
 
 > **HTTP 클라이언트를 이 패키지에 들이지 않는다.** `httpx`·`requests`로 vCenter REST를 직접 호출하면
 > D-010을 우회하는 것이고, `arch_check.py`의 읽기 전용 검사(메서드명 기반)가 HTTP 동사를 잡지 못한다.
+
+### 1.2 지원 버전 범위 — 하한과 **상한**
+
+`spec.md` CST-10은 **하한(6.5)만** 정의하고 상한을 말하지 않았다. 그 결과 이 계획서 전체가
+"6.5에서 되는가"만 따졌고, 고객사가 **VMware Cloud Foundation 9.x**를 쓸 때 깨지는 지점이
+검증 항목에 하나도 없었다. 상한을 명시한다.
+
+| 구분 | 버전 | 근거 |
+|---|---|---|
+| 하한 | vCenter 6.5 | `spec.md` CST-10 (EOL 버전 — pyVmomi 호환 확인 필요, §14.2) |
+| **상한** | **vCenter 9.0 (VCF 9.x)** | 최신 GA. 인증·인벤토리 구성이 8.x와 다르다 (§3.2, §5.4) |
+
+**하한과 상한은 서로 다른 위험을 만든다.** 하한은 *속성이 없을* 위험(→ `missingSet`으로 흡수, §4.2),
+상한은 *접속 자체가 막히거나 자원 형태가 달라질* 위험이다(→ 흡수 장치 없음). 후자가 더 위험하다.
+
+VCF 9.x에서 이 어댑터에 영향을 주는 변화는 §14에 모았다. 요약하면 4개다.
+
+| # | 변화 | 영향 절 |
+|---|---|---|
+| 1 | **사용자명+암호 단독 로그인 차단** (페더레이션 우회 방지) | §3.2 |
+| 2 | NSX 세그먼트가 `backingType="nsx"` 분산 포트그룹으로 표현 | §5.3, §6.3 |
+| 3 | 기본 스토리지가 vSAN — 프로비저닝 공식 전제가 다름 | §5.1 |
+| 4 | 제품명 **ESXi → ESX** 환원 | §12 |
 
 ## 2. 모듈 구성
 
@@ -117,8 +150,48 @@ class VCenterSession:
 
 - **`raise ... from None`**: pyVmomi 예외 메시지에 접속 정보가 섞일 수 있다. 체이닝을 끊고 정제된 메시지만 남긴다 (계획 10 §2.4).
 - **세션 누수**: vCenter는 유휴 세션을 일정 시간 유지한다. 수집 실패 시에도 반드시 `close_session`을 호출한다. `__aexit__`로 보장한다.
-- **`connectionPoolTimeout`**: pyVmomi 버전에 따라 파라미터명이 다를 수 있다. `[검증 필요]`
+- **`connectionPoolTimeout`**: ~~pyVmomi 버전에 따라 파라미터명이 다를 수 있다.~~ **해소 (2026-08-19)** —
+  pyVmomi 9.1.0.0 `SmartConnect` 시그니처에 `connectionPoolTimeout`(기본 900)이 그대로 존재한다.
+  같은 확인에서 `version` 파라미터가 **`preferredApiVersions`로 바뀐 것**을 확인했으나 이 계획서는
+  버전을 명시 지정하지 않으므로 영향 없다 (§14.2).
 - vCenter는 HTTPS만 지원한다 (`Connection.validate()`에서 강제, 계획 02 §10).
+  VCF 9.0은 **80번 포트 HTTP 엔드포인트를 deprecated** 처리했으므로 이 강제는 상한 쪽과도 일치한다.
+- **TLS 하한을 명시한다.** ✅ **적용 완료 (2026-08-19)** — `_build_ssl_context`에
+  `ctx.minimum_version = ssl.TLSVersion.TLSv1_2`. VCF 9는 TLS 1.3이 기본이고 기본
+  프로파일(`COMPATIBLE`)이 1.2를 폴백으로 남기지만, 강화 프로파일(`NIST_2024_TLS_13_ONLY`)을
+  적용한 사이트에서는 클라이언트가 TLS 1.3을 지원해야 한다. `verify_tls=false`는 **인증서
+  검증만** 끄는 것이지 프로토콜 하한까지 낮추지 않는다 (`tests/unit/test_vcenter_session_tls.py`).
+- **`verify_tls=True` 경로에 CA 번들 지정 수단이 필요하다.** VCF는 VMCA 자체 서명 인증서가 기본이라,
+  신뢰 저장소에 VMCA 루트를 넣는 경로가 없으면 운영자가 결국 `verify_tls=false`로 흐른다.
+  pyVmomi 9.1에는 `serverPemCert`·`disableSslCertValidation` 파라미터가 있다. `[TODO]` — 계획 02
+  `Connection` 모델에 CA 번들 필드를 둘지 Step 2 실측 후 결정한다.
+
+### 3.2 수집 계정 요건 — **VCF 9.0에서 인증이 막힐 수 있다**
+
+VCF 9.0 vSphere 지원 노트 원문:
+
+> "vCenter 9.0 **blocks logins with just a user name and password**, which might sometimes allow
+> bypassing the federated provider domain."
+> "vCenter 9.0 discontinues support for **Integrated Windows Authentication**."
+
+이 계획서의 `_connect_sync`는 `SmartConnect(user=..., pwd=...)` **단 하나의 인증 경로**만 가정한다.
+Identity Federation이 구성된 VCF 9 환경에서 **페더레이션 도메인 계정을 수집 계정으로 쓰면 로그인 자체가 막힌다.**
+수집이 실패하는 것이 아니라 연결 등록조차 안 된다.
+
+**따라서 수집 계정 요건을 전제로 명문화한다.**
+
+| 항목 | 요건 |
+|---|---|
+| 도메인 | **로컬 SSO 도메인(`vsphere.local`) 계정만 사용한다.** AD/IdP 페더레이션 계정은 쓰지 않는다 |
+| 역할 | Read-Only (기존 제약 유지) |
+| 금지 | IWA·SSPI·스마트카드·RSA SecurID — VCF 9.0에서 전부 제거됨 |
+| 주의 | vCenter 9.0에서 **built-in solution user 계정은 deprecated**다. 그 계열을 빌려 쓰지 않는다 |
+
+**대체 경로 `[TODO]`**: 고객사 정책상 로컬 SSO 계정 발급이 불가하면 토큰 인증으로 가야 한다.
+pyVmomi 9.1 `SmartConnect`에 `token`·`tokenType`·`sessionId` 파라미터가 존재함을 확인했다
+(`b64token`·`mechanism`은 deprecated). 이 경우 계획 02 `Connection` 모델에 **인증 방식 필드**가 필요하며,
+자격증명 암호화 대상도 "비밀번호" 하나가 아니게 된다. **Step 2 실측에서 대상 환경의 인증 구성을
+먼저 확인한 뒤** 착수 여부를 판단한다 (ROADMAP §15.1).
 
 ---
 
@@ -248,6 +321,7 @@ VM_PROPERTIES: list[str] = [
     "name",
     "config.uuid",                      # BIOS UUID
     "config.instanceUuid",              # native_id (vCenter 인스턴스 내 고유)
+    "config.template",                  # 템플릿 여부 — VM과 구분 필요 (§5.4)
     "config.version",                   # vmx-19
     "config.firmware",                  # bios | efi
     "config.guestFullName",             # 구성값 OS
@@ -308,12 +382,25 @@ DATASTORE_PROPERTIES: list[str] = [
 ]
 
 NETWORK_PROPERTIES: list[str] = ["name", "summary.accessible", "host", "vm"]
-DVPG_PROPERTIES: list[str] = ["name", "config.defaultPortConfig", "config.distributedVirtualSwitch", "host"]
+DVPG_PROPERTIES: list[str] = [
+    "name", "config.defaultPortConfig", "config.distributedVirtualSwitch", "host",
+    # --- NSX 식별 (VCF 필수, §5.3) ---
+    "config.backingType",               # "standard" | "nsx"
+    "config.logicalSwitchUuid",
+    "config.segmentId",
+    "config.transportZoneUuid",
+]
 ```
 
 > **[검증 필요]** (`docs/00_research_notes.md` §11-2): 속성 경로는 vSphere 버전에 따라 존재 여부가 다르다.
-> **지원 하한이 6.5이므로** (`spec.md` CST-10) 6.5 환경에서 반드시 실측한다. `config.createDate`처럼 후속 버전에서
-> 추가된 속성은 6.5에서 `missingSet`으로 떨어질 수 있다. 누락 속성은 예외가 아닌 `None`으로 처리한다 (§4.2 `_props_to_dict`가 자동 대응).
+> **하한·상한 양쪽에서 실측한다** (§1.2).
+> - **하한(6.5)**: `config.createDate`처럼 후속 버전에서 추가된 속성이 `missingSet`으로 떨어질 수 있다.
+> - **상한(VCF 9.0)**: 위 목록의 속성 경로는 pyVmomi 9.1.0.0 바인딩에 **전부 존재함을 확인했다 (2026-08-19)**.
+>   `guest.toolsStatus`는 API 4.0부터 deprecated이지만 9.1 바인딩에도 남아 있고 값도 채워진다 (§12).
+>
+> 누락 속성은 예외가 아닌 `None`으로 처리한다 (§4.2 `_props_to_dict`가 자동 대응).
+> **이 흡수 장치는 "속성이 없는" 경우만 막아 준다.** 자원의 표현 형태 자체가 달라지는 경우(§5.3 NSX,
+> §5.1 vSAN)는 조용히 잘못된 값을 만들므로 별도 대응이 필요하다.
 
 ### 5.1 프로비저닝 용량 계산
 
@@ -322,6 +409,15 @@ DVPG_PROPERTIES: list[str] = ["name", "config.defaultPortConfig", "config.distri
 ```
 provisioned = (capacity - freeSpace) + uncommitted
 ```
+
+> **이 공식은 VMFS/NFS 전제다. vSAN에서는 그대로 쓰면 안 된다. `[검증 필요]`**
+> **VCF의 기본 스토리지는 vSAN**이므로 상한 환경에서는 이쪽이 주 경로가 된다.
+> vSAN은 스토리지 정책(FTT/RAID)에 따라 실제 소비량이 배수로 달라지고, `summary.uncommitted`가
+> 채워지지 않을 수 있다. Step 2에서 `summary.type == "vsan"`인 데이터스토어의 `capacity`·`freeSpace`·
+> `uncommitted` 실값을 확인하기 전까지 **vSAN 데이터스토어는 `provisioned`를 계산하지 않고 `None`으로 둔다.**
+> 잘못 계산한 오버커밋 수치는 빈 값보다 나쁘다.
+>
+> 참고: **vVols는 VCF 9.0에서 deprecated**로 공지되어 향후 제거 예정이다. 신규 대응하지 않는다.
 
 ### 5.2 Custom Attributes (`custom_fields.py`) — FR-606
 
@@ -371,6 +467,67 @@ def map_custom_attributes(
   조회되지 않으면 FR-606의 남은 절반도 수집 불가가 되며, 이때는 빈 값으로 두고 진행한다 (예외를 던지지 않는다).
 - 포탈 메타데이터를 **덮어쓰지 않는다.** 이 값은 참고용 초기값이며 `ResourceMetadata`와 별개 필드로 저장한다
   (계획 02 §8, FR-602).
+
+### 5.3 네트워크 자원 수집 — 중복과 NSX (VCF 필수)
+
+**문제 1 — 같은 포트그룹이 두 번 수집된다.**
+
+pyVmomi 9.1 바인딩에서 타입 계층을 확인한 결과다 (2026-08-19).
+
+```
+vim.dvs.DistributedVirtualPortgroup → vim.Network → vim.ManagedEntity
+vim.OpaqueNetwork                   → vim.Network → vim.ManagedEntity
+```
+
+**DVPG와 OpaqueNetwork는 둘 다 `vim.Network`의 하위 타입이다.** 따라서
+`CreateContainerView(type=[vim.Network])`는 표준 포트그룹뿐 아니라 **분산 포트그룹과 opaque network를
+함께 반환한다.** §5의 `NETWORK_PROPERTIES`와 `DVPG_PROPERTIES`를 각각 수집하면
+**동일 포트그룹이 두 레코드로 저장된다** — CLAUDE.md "자원 식별 일관성" 제약(중복 레코드 = 결함) 위반이다.
+
+**규칙**: Network 수집 결과에서 **MoRef 접두사로 판별해 DVPG·OpaqueNetwork를 제외**한다.
+표준 포트그룹은 `network-*`, 분산 포트그룹은 `dvportgroup-*`이다. 제외한 것은 DVPG 전용 수집으로만 담는다.
+
+```python
+def is_standard_network(moid: str) -> bool:
+    """vim.Network 뷰에는 DVPG·OpaqueNetwork가 함께 온다. 표준 포트그룹만 남긴다."""
+    return moid.startswith("network-")
+```
+
+> `[검증 필요]` MoRef 접두사 규칙은 vCenter 구현 세부사항이다. Step 2에서 **실제 반환된 MoRef 접두사
+> 분포**를 기록한다. 접두사가 신뢰할 수 없으면 `PropertySpec`에 타입별 `pathSet`을 나눠 넣어
+> `missingSet` 유무로 판별하는 방식으로 바꾼다.
+
+**문제 2 — VCF의 NSX 세그먼트를 구분할 수 없다.**
+
+VCF는 NSX가 기본 구성요소다. NSX 세그먼트는 **VDS 위에서 `backingType="nsx"`인 분산 포트그룹**으로
+나타난다(N-VDS/opaque 방식은 구형). pyVmomi 9.1의 `DistributedVirtualPortgroup.ConfigInfo` 실제 필드를
+확인했다.
+
+```
+key, name, numPorts, distributedVirtualSwitch, defaultPortConfig, description, type,
+backingType, policy, ..., transportZoneUuid, transportZoneName, logicalSwitchUuid,
+segmentId, subnetId, nsxConfig
+```
+
+§5의 `DVPG_PROPERTIES`에 `config.backingType`·`config.logicalSwitchUuid`·`config.segmentId`·
+`config.transportZoneUuid`를 추가했다. 이것이 없으면 **VCF 환경에서 NSX 세그먼트와 일반 포트그룹이
+구별되지 않는다.**
+
+### 5.4 VCF 환경의 인벤토리 노이즈
+
+`vim.VirtualMachine` 뷰에는 운영자가 관리하는 VM 외에 다음이 함께 들어온다. VCF는 이들이
+**기본 배포물**이라 8.x 환경보다 규모가 크다.
+
+| 대상 | 판별 | 조치 |
+|---|---|---|
+| **VM 템플릿** | `config.template == True` | 별도 분류. §5에 `config.template` 추가함 |
+| vCLS VM | 이름 `vCLS-*` | VCF 9.0에서 deprecated지만 8.x 환경엔 존재 |
+| Supervisor / VKS 노드 VM, vSphere Pod | 폴더·네임스페이스 소속 | 분류만 하고 제외하지 않는다 |
+| VCF Operations·Automation 어플라이언스 | 이름 규칙 | 분류만 |
+
+**제외가 아니라 분류다.** 인벤토리 포탈은 "무엇이 있는지"를 보여주는 것이 목적이므로
+임의로 숨기지 않는다. 다만 목록 기본 필터와 리포트 집계에서 템플릿·인프라 VM이 섞이면 수치가 왜곡되므로
+**구분 가능한 필드는 반드시 수집한다.** 판별 규칙 확정은 Step 2 실측 후 (`docs/04_field_validation.md`).
 
 ---
 
@@ -521,15 +678,28 @@ def _map_adapter(dev: vim.vm.device.VirtualEthernetCard) -> NetworkAdapter:
 
 
 def _network_name(backing: Any) -> str | None:
-    """표준 포트그룹과 분산 포트그룹의 이름 추출 경로가 다르다."""
+    """백킹 종류마다 이름 추출 경로가 다르다. 3가지를 모두 처리한다.
+
+    pyVmomi 9.1 바인딩 확인 결과 (2026-08-19):
+      NetworkBackingInfo                 → deviceName        (표준 포트그룹)
+      DistributedVirtualPortBackingInfo  → port.portgroupKey (분산 포트그룹 / NSX 세그먼트)
+      OpaqueNetworkBackingInfo           → opaqueNetworkId   (NSX opaque network)
+    """
     if hasattr(backing, "deviceName"):                       # 표준 포트그룹
         return backing.deviceName
     port = getattr(backing, "port", None)                    # 분산 포트그룹
-    return getattr(port, "portgroupKey", None)               # 키 → 이름 해석은 §6.4
+    if port is not None:
+        return getattr(port, "portgroupKey", None)           # 키 → 이름 해석은 §6.4
+    return getattr(backing, "opaqueNetworkId", None)         # opaque network (§5.3)
 ```
 
 > 분산 포트그룹은 `portgroupKey`(MoRef)만 얻어진다. 이름으로 바꾸려면 별도로 수집한 Network 목록과 대조해야 한다.
 > **매핑 단계에서 키를 저장하고, 이름 해석은 수집 완료 후 후처리**로 수행한다 (§6.4).
+
+> **opaque 분기가 없으면 조용히 `None`이 된다.** 기존 코드는 `deviceName`도 `port`도 없는 백킹에서
+> `getattr(None, "portgroupKey", None)`을 평가해 예외 없이 `None`을 반환했다. NSX opaque network를 쓰는
+> VM의 네트워크 이름이 **아무 오류 없이 통째로 비는** 형태라 감지되지 않는다. 위 3분기로 고정하고,
+> 셋 중 어디에도 걸리지 않으면 `[검증 필요]`로 로그를 남긴다.
 
 ### 6.4 참조 해석 후처리
 
@@ -705,34 +875,48 @@ async def _collect(
 
 ## 10. 구현 순서
 
-| # | 작업 | 검증 |
-|---|---|---|
-| 1 | `errors.py` | `InvalidLogin` → `AuthenticationError(retryable=False)`, 메시지에 자격증명 없음 |
-| 2 | `session.py` | 연결/해제, 실패 경로에서도 세션 정리, TLS 검증 on/off |
-| 3 | `property_specs.py` | **대상 vCenter에서 모든 속성 경로 실측** (§5 검증 필요) |
-| 4 | `collector.py` 페이징 | `maxObjects`(=2) 초과 자원에서 토큰 반복 동작, `missingSet` 처리 |
-| 5 | `mapper.py` — `map_guest_info` | Tools 상태 4가지 분기, 링크로컬 필터 |
-| 5b | `custom_fields.py` | 키→이름 사전 로드, manager가 `None`일 때 빈 사전, 이름 없는 키 폐기 |
-| 6 | `mapper.py` — 장치 | 디스크 Thin/Thick, MAC 정규화, 분산 포트그룹 키 |
-| 7 | `mapper.py` — VM 전체 | `spec.md` §2.2 필수 속성 매핑 |
-| 8 | `mapper.py` — Host/Cluster/Datastore/Network | 용량 바이트 통일, 오버커밋 계산 |
-| 9 | `reader.py` | **계약 테스트 스위트(계획 03 §9) 통과** |
-| 10 | 연결 테스트 | 4단계 결과, 권한 부족 시 유형별 판정 |
+| # | 작업 | 검증 | 상태 (2026-08-16) |
+|---|---|---|---|
+| 1 | `errors.py` | `InvalidLogin` → `AuthenticationError(retryable=False)`, 메시지에 자격증명 없음 | ✅ 완료 |
+| 2 | `session.py` | 연결/해제, 실패 경로에서도 세션 정리, TLS 검증 on/off | ✅ 완료 |
+| 3 | `property_specs.py` | **대상 vCenter에서 모든 속성 경로 실측** (§5 검증 필요) — **하한·상한 양쪽** | 🔶 축소판(`VM_PROPERTIES_MVP` 13개)만 — 실측은 Step 2 |
+| 4 | `collector.py` 페이징 | `maxObjects`(=2) 초과 자원에서 토큰 반복 동작, `missingSet` 처리 | ✅ 완료 — 단위 테스트로 확인 |
+| 5 | `mapper.py` — `map_guest_info` | Tools 상태 4가지 분기, 링크로컬 필터 | 🔶 4분기 완료 — IP 미수집이라 링크로컬 필터는 미해당 |
+| 5b | `custom_fields.py` | 키→이름 사전 로드, manager가 `None`일 때 빈 사전, 이름 없는 키 폐기 | ⬜ 미착수 (Step 8) |
+| 6 | `mapper.py` — 장치 | 디스크 Thin/Thick, MAC 정규화, 분산 포트그룹 키 | ⬜ 미착수 (Step 4) |
+| 7 | `mapper.py` — VM 전체 | `spec.md` §2.2 필수 속성 매핑 | 🔶 Step 1 필드만 (§13.1) |
+| 8 | `mapper.py` — Host/Cluster/Datastore/Network | 용량 바이트 통일, 오버커밋 계산 | ⬜ 미착수 (Step 6) |
+| 9 | `reader.py` | **계약 테스트 스위트(계획 03 §9) 통과** | 🔶 `list_virtual_machines`만 — Protocol 준수 계약 통과 |
+| 10 | 연결 테스트 | 4단계 결과, 권한 부족 시 유형별 판정 | 🔶 4단계 구현 — AUTHORIZED는 VM 1종만 프로브 (§13.2) |
+| 11 | **상한(VCF 9.x) 대응** — §3.2 계정 요건, §5.3 NSX·중복, §5.1 vSAN, §6.3 opaque 분기 | §14.3의 7개 항목 실측 | ⬜ 미착수 (Step 2, D-020) |
 
 ## 11. 완료 기준
 
-- [ ] `arch_check.py` 통과 — hyperv 미참조, 읽기 전용 메서드만
-- [ ] 계약 테스트 스위트 14종 통과 (05와 동일 스위트)
-- [ ] `maxObjects` 초과 자원이 전량 수집됨 (토큰 반복 확인)
-- [ ] `missingSet` 속성이 `KeyError` 없이 `None`으로 처리됨
-- [ ] Tools 미설치 VM이 `TOOLS_NOT_INSTALLED`로 매핑
-- [ ] 링크로컬·루프백 IP가 결과에 없음
-- [ ] MAC이 `00:50:56:aa:bb:cc` 형식으로 정규화
-- [ ] pyVmomi 예외가 어댑터 밖으로 나오지 않음
-- [ ] 세션이 실패 경로에서도 해제됨 (`__aexit__` 확인)
-- [ ] Custom Attributes가 (이름, 값) 쌍으로 매핑되고, 조회 실패 시에도 나머지 수집이 진행됨
-- [ ] **패키지에 HTTP 클라이언트 import가 없음** — `httpx`·`requests`·`aiohttp` (D-010: REST 우회 금지)
-- [ ] **코드에 쓰기 API 호출이 없음** — `Destroy_Task`, `PowerOffVM_Task`, `ReconfigVM_Task`, `CreateVM_Task`, `RelocateVM_Task`, `SetField`, `AddCustomFieldDef`, `RemoveCustomFieldDef` 등 (verifier가 직접 확인, D-005 한계)
+> 판정일 2026-08-16. Step 1 범위 밖 항목은 사유와 해당 Step을 병기한다.
+
+- [x] `arch_check.py` 통과 — hyperv 미참조, 읽기 전용 메서드만 *(`--ci` 재실행, 위반 0)*
+- [ ] 계약 테스트 스위트 14종 통과 (05와 동일 스위트) — *Protocol 준수 계약(세 어댑터 파라미터화, `tests/unit/test_hyperv_readers.py`)은 통과. 행동 계약 스위트의 vCenter 적용은 잔여*
+- [x] `maxObjects` 초과 자원이 전량 수집됨 (토큰 반복 확인) — *`tests/unit/test_vcenter_collector.py` (page_size=2, 3페이지 목)*
+- [x] `missingSet` 속성이 `KeyError` 없이 `None`으로 처리됨 — *동일 테스트 파일*
+- [x] Tools 미설치 VM이 `TOOLS_NOT_INSTALLED`로 매핑 — *`tests/unit/test_vcenter_mapper.py` + vcsim 실동작(게스트 도구 없음)*
+- [ ] 링크로컬·루프백 IP가 결과에 없음 — *미해당: Step 1은 `guest.net`을 수집하지 않는다. IP 수집 추가 시 확인*
+- [ ] MAC이 `00:50:56:aa:bb:cc` 형식으로 정규화 — *미해당: NIC 매핑은 Step 4 (§6.3)*
+- [x] pyVmomi 예외가 어댑터 밖으로 나오지 않음 — *공개 경로(세션·수집·연결 테스트) 전부 `translate_error` 경유. 전용 테스트는 없음(코드 검토)*
+- [x] 세션이 실패 경로에서도 해제됨 (`__aexit__` 확인) — *reader `__aexit__` + `collect_service` `finally`. 뷰 해제는 오류 주입 테스트로 확인*
+- [ ] Custom Attributes가 (이름, 값) 쌍으로 매핑되고, 조회 실패 시에도 나머지 수집이 진행됨 — *미착수 (Step 8, §5.2)*
+- [x] **패키지에 HTTP 클라이언트 import가 없음** — `httpx`·`requests`·`aiohttp` (D-010: REST 우회 금지) *(grep 확인)*
+- [x] **코드에 쓰기 API 호출이 없음** — `Destroy_Task`, `PowerOffVM_Task`, `ReconfigVM_Task`, `CreateVM_Task`, `RelocateVM_Task`, `SetField`, `AddCustomFieldDef`, `RemoveCustomFieldDef` 등 (verifier가 직접 확인, D-005 한계) *(grep 확인 — 호출 0건, docstring 언급 2건뿐)*
+
+**상한(VCF 9.x) 대응 — 2026-08-19 추가.** 전부 Step 2 실측 이후 판정한다 (§14.3).
+
+- [x] `pyproject.toml`의 `pyvmomi`에 **하한·상한 핀이 있음** (§14.2) — `>=8.0.3,<10` *(2026-08-19)*
+- [ ] 수집 계정이 **로컬 SSO 도메인 계정**임이 문서로 확인됨 (§3.2)
+- [ ] `vim.Network` 수집 결과에 **DVPG·OpaqueNetwork가 섞이지 않음** (§5.3)
+- [ ] NSX 세그먼트가 `config.backingType == "nsx"`로 식별됨 (§5.3)
+- [ ] NSX opaque network를 쓰는 VM의 네트워크 이름이 비지 않음 (§6.3)
+- [ ] vSAN 데이터스토어의 `provisioned`가 **잘못 계산되지 않음** (미검증 시 `None`, §5.1)
+- [ ] VM 템플릿이 일반 VM과 구분됨 (`config.template`, §5.4)
+- [x] `_build_ssl_context`에 `minimum_version`이 명시됨 (§3.1) — TLS 1.2 하한 *(2026-08-19)*
 
 ## 12. 주의사항
 
@@ -742,3 +926,149 @@ async def _collect(
 - pyVmomi는 동기 라이브러리다. `asyncio.to_thread` 없이 호출하면 이벤트 루프가 멈춘다.
 - `raise ... from None`으로 예외 체이닝을 끊는다. 원본 메시지에 접속 정보가 섞일 수 있다.
 - 개발·테스트는 목 커넥터로 한다 (CST-04). 운영 vCenter에 붙지 않는다.
+- **`"ESXi"` 문자열로 하이퍼바이저 종류를 판별하지 않는다.** VCF 9.0에서 제품명이 **ESXi → ESX로 환원**되었다.
+  이 어댑터는 `config.product.name`을 가공 없이 저장하므로 안전하지만, 조회·리포트 계층에서
+  `"ESXi"` 매칭을 넣으면 VCF 9 호스트가 걸러진다 (`spec.md` §2의 "하이퍼바이저 종류(ESXi/Hyper-V)" 표기 포함).
+  종류 판별은 **`ConnectionKind`로 한다** — 제품명 문자열이 아니다.
+- **deprecated 속성을 알고 쓴다.** `guest.toolsStatus`는 API 4.0부터 deprecated이고 대체는
+  `guest.toolsVersionStatus2`·`guest.toolsRunningStatus`다. pyVmomi 9.1 바인딩에 여전히 존재하고 값도
+  채워지므로 현행 유지하되, 상한 실측에서 값이 비면 대체 속성으로 전환한다.
+  `ADAPTER_TYPE_MAP`의 VMXNET2·PCNet32(VLANCE)는 VCF 9에서 어댑터 자체가 deprecated지만
+  **기존 VM에는 남아 있으므로 매핑을 지운다.**
+- **vcsim으로 상한을 검증할 수 없다.** vcsim은 vSphere 6.5로 응답한다(§13.3). vcsim 통과는
+  하한 쪽 증거일 뿐이며, VCF 9 대응 판정 근거가 되지 못한다.
+
+---
+
+## 13. 진행 현황 (2026-08-16)
+
+Step 1 축소판(ROADMAP §7.2·§24) 기준으로 구현되었다. 아래 대조는 **이 계획서 원본과 실제
+코드(`src/infrastructure/vcenter/`)를 절 단위로 비교**한 결과다 (Known Mistakes #4 방지).
+
+### 13.1 절별 구현 대조
+
+| 절 | 내용 | 상태 |
+|---|---|---|
+| §2 모듈 구성 | 7/8 구현 — `custom_fields.py`만 없음 (Step 8) | 🔶 |
+| §3 세션 | `session.py` 전체 + `is_open`·`server_version` 추가 | ✅ |
+| §4 PropertyCollector | 페이징·토큰 반복·`missingSet`·뷰 해제(`finally`) 전체 | ✅ |
+| §5 수집 속성 | `VM_PROPERTIES_MVP` 13개 (축소판). `config.hardware.device` 의도적 제외(비용 정량화 목적). HOST~DVPG 목록 미작성 | 🔶 |
+| §5.1 프로비저닝 계산 | 미구현 — Datastore 수집이 Step 6 | ⬜ |
+| §5.2 Custom Attributes | 미구현 (Step 8) | ⬜ |
+| §6.1 VM 매핑 | Step 1 필드만 — disks·adapters·snapshots·boot_time·created_at·annotation·custom_attributes·folder_path·resource_pool·firmware·hardware_version·cores_per_socket 제외 | 🔶 |
+| §6.2 게스트 매핑 | Tools 4분기 + 상태·값 이중 확인 구현. IP(`guest.net`)·`tools_version` 제외 | 🔶 |
+| §6.3 장치 매핑 | 미구현 (Step 4) | ⬜ |
+| §6.4 참조 해석 후처리 | 미구현 (Step 6) — `moref_or_none`이 MoRef 원문을 저장 | ⬜ |
+| §6.5 Thin 실제 사용량 | 미구현 — 계획대로 `[TODO]` 유지 | ⬜ |
+| §7 연결 테스트 | 4단계(StageRunner) 구현 | 🔶 |
+| §8 예외 변환 | 전체 구현 + 보강 (§13.2) | ✅ |
+| §9 Reader | `list_virtual_machines`만. `_collect` 제네릭 헬퍼는 `list_*`가 1개뿐이라 미도입 | 🔶 |
+
+### 13.2 계획 대비 편차
+
+- **`connectionPoolTimeout=-1` 미전달** (§3의 `[검증 필요]` 항목): `SmartConnect` 기본값을 쓴다.
+  필요 여부는 Step 2 장기 수집 실측에서 판단한다.
+- **페이지 크기는 `Settings.collection_page_size`(기본 500) 주입** — 계획의 하드코딩 대신 설정화.
+- **§7 AUTHORIZED 프로브가 VM 1종만**: 계획은 4유형(VM·Host·Datastore·Network)이지만 Step 1 수집
+  대상이 VM뿐이라 맞췄다. 나머지 유형은 해당 `list_*` 추가 시(Step 6) 함께 확장한다.
+- **§7 TLS_VALID 단계는 별도 핸드셰이크를 하지 않는다**: 실제 검증은 다음 단계 `SmartConnect`가
+  수행한다. 별도 핸드셰이크는 세션을 두 번 여는 셈이라 vCenter 부하만 늘린다.
+- **`errors.py` 보강**: 이미 도메인 예외면 통과시키는 분기, `secrets` 마스킹 파라미터 추가.
+  `ssl.SSLCertVerificationError`는 `ssl.SSLError`의 하위 타입이라 분기 하나로 처리.
+- **`reader.py`에 `connection_id`·`is_session_closed`·`get_outcomes` 추가** — 계획 03 Protocol 요구사항.
+- **§4 헬퍼 명칭**: `_moref_id`/`_props_to_dict` 대신 공개 함수 `moref_id`/`props_to_dict` — 단위
+  테스트가 직접 호출한다.
+
+### 13.3 검증 결과 (2026-08-16 확인)
+
+- `python scripts/arch_check.py --ci` 통과 — 위반 0 (hyperv 미참조, 읽기 전용 메서드만)
+- 단위 테스트 13종 통과 — `test_vcenter_collector.py` 4종(토큰 반복 전량 수집, 오류 시 뷰 해제,
+  `missingSet`→`None`, 빈 propSet) + `test_vcenter_mapper.py` 9종(핵심 필드, `instanceUuid`→MoRef
+  폴백, UNKNOWN 전원, Tools 4분기, `os_source` 폴백 등)
+- Protocol 준수 계약: 세 어댑터 파라미터화 테스트에 `VCenterInventoryReader` 포함 통과
+  (`tests/unit/test_hyperv_readers.py`)
+- 쓰기 API·HTTP 클라이언트 grep: 호출·import 0건
+- **vcsim 관통 검증 (2026-08-14)**: 연결 등록 → 수집 → VM 목록 조회까지 실서버로 확인.
+  vSphere 6.5로 보고되며, 게스트 정보는 `tools_not_installed`로 표시 — vcsim에 게스트 도구가
+  없으므로 정상 (CLAUDE.md 개발 환경 절 참조)
+
+### 13.4 잔여 작업
+
+| 시점 | 작업 |
+|---|---|
+| **Step 2 (다음)** | 실 vCenter 실측 — §5 속성 경로 존재 여부, `instanceUuid` 공백 VM, `maxObjects` 값별 응답 시간 (ROADMAP §15) → `docs/04_field_validation.md` 기록 |
+| **Step 2 (다음)** | **상한 대응 — §14.3의 7개 실측 항목.** 대상 환경에 VCF 9.x가 있으면 **§3.2 인증 확인이 최우선**이다 (연결 등록 자체가 막힐 수 있음) |
+| ~~**Step 2 이전**~~ | ~~`pyproject.toml` `pyvmomi` 버전 핀~~ — ✅ **완료 (2026-08-19)**. TLS 하한(§3.1)도 함께 적용 |
+| Step 4 | §6.3 장치 매핑(**opaque 백킹 3분기 포함**), §6.5 재검토, `config.hardware.device` 추가 + 수집 시간 전후 비교 |
+| Step 6 | §6.4 MoRef→이름 해석, 나머지 `list_*` + AUTHORIZED 프로브 4유형 확장, **§5.3 Network/DVPG 중복 제거** |
+| Step 8 | §5.2 `custom_fields.py` (FR-606) |
+
+---
+
+## 14. 버전 호환성 (2026-08-19 신설)
+
+이 계획서가 **하한(6.5)만 다루고 상한(VCF 9.x)을 다루지 않았던 것**을 보완한다.
+근거 확인은 Broadcom 공식 문서 + **이 개발 환경에 설치된 pyVmomi 9.1.0.0 바인딩 직접 조회**로 했다.
+
+### 14.1 호환성 매트릭스
+
+| vCenter | pyVmomi | 상태 | 근거 |
+|---|---|---|---|
+| 6.5 (하한) | 9.1.0.0 | **미검증 — 위험** | Broadcom 정책은 "직전 4개 릴리스" 지원. 6.5는 범위 밖. 단 `vim25` 협상 목록에 `version10`(6.5)이 남아 있어 동작 가능성은 있음 |
+| 7.0 | 9.1.0.0 | 미검증 | 정책 범위 내 |
+| 8.0 | 9.1.0.0 | 미검증 | 정책 범위 내 |
+| **9.0 (VCF 9, 상한)** | 9.1.0.0 | **미검증 — §14.3 필수** | 인증·NSX·vSAN 변화 있음 |
+| vcsim | 9.1.0.0 | ✅ 통과 (2026-08-14) | **6.5로 응답** — 하한 쪽 증거일 뿐 |
+
+### 14.2 pyVmomi 의존성
+
+**현재 `pyproject.toml`은 `"pyvmomi"` 무핀이고, 이 환경에는 9.1.0.0이 설치되어 있다.**
+`docs/00_research_notes.md` §11-9가 "버전 고정" 결론을 냈는데 이 계획서와 pyproject에 반영되지 않았다.
+
+| 항목 | 확인 결과 (pyVmomi 9.1.0.0) |
+|---|---|
+| PyPI 최신 | 9.1.0.0 |
+| 호환 정책 | **직전 4개 vSphere 릴리스** — 6.5 보증 없음 |
+| 배포 경로 | **VCF 9.0부터 독립 SDK 배포 중단, VCF Python SDK에 통합.** PyPI에는 9.1.0.0까지 게시되어 있으나 향후 공급 경로를 주시한다 |
+| Python | 3.10+ (VCF SDK 문서는 3.9~3.13 표기) |
+| `SmartConnect` 시그니처 | `connectionPoolTimeout`(기본 900) **유지**, `version` → **`preferredApiVersions`로 변경**, `token`·`tokenType`·`sessionId` 존재, `b64token`·`mechanism` deprecated, `disableSslCertValidation`·`serverPemCert` 존재 |
+| 9.x 파괴적 변경 | `pyVmomi.Feature` 제거, `pyVmomiSettings`(`legacyThumbprintException`·`binaryIsBytearray`) 제거, `ThumbprintMismatchException` → `pyVmomi.Security.` 이동, `publicVersions`/`dottedVersions` → `ltsVersions` |
+
+**파괴적 변경 4건은 이 계획서가 쓰지 않는 API라 직접 피해가 없다.** 그래도 무핀 상태는 위험하다 —
+다음 메이저에서 무엇이 더 사라질지 모르고, 하한 6.5를 유지하는 한 상한 라이브러리와 계속 어긋난다.
+
+**조치**: ✅ **적용 완료 (2026-08-19)** — `pyproject.toml`이 `"pyvmomi>=8.0.3,<10"`이다.
+상한 확정(§14.4) 후 하한을 재조정한다.
+
+### 14.3 Step 2 상한 실측 항목
+
+ROADMAP §15에 등재한다. **대상 환경에 VCF 9.x가 없으면 1번만 확인하고 나머지는 보류한다.**
+
+| # | 확인할 것 | 실패 시 영향 |
+|---|---|---|
+| 1 | **대상 vCenter 버전 분포의 상한** | 9.x가 있으면 2~7 전부 필수 |
+| 2 | **수집 계정이 로컬 SSO 계정인가** (§3.2) | 페더레이션 계정이면 **연결 등록 자체가 불가** — 토큰 인증 착수 판단 |
+| 3 | TLS 프로파일 (`COMPATIBLE` / `NIST_2024_TLS_13_ONLY`) | 후자면 클라이언트 TLS 1.3 필수 |
+| 4 | `vim.Network` 뷰의 **MoRef 접두사 분포** (§5.3) | 중복 제거 규칙 확정 |
+| 5 | NSX 세그먼트의 `config.backingType` 실값 (§5.3) | NSX 구분 가능 여부 |
+| 6 | vSAN 데이터스토어의 `uncommitted` 유무 (§5.1) | 오버커밋 계산 가능 여부 |
+| 7 | vCLS·Supervisor·템플릿 VM 비율 (§5.4) | 목록 기본 필터·리포트 집계 왜곡 정도 |
+
+### 14.4 미해결 결정 — **사용자 판단 필요**
+
+**`spec.md` CST-10은 하한(6.5)만 정의한다.** 상한을 요건에 못 박으려면 `spec.md` 개정이 필요하고,
+이는 기존 결정 변경이므로 임의로 진행하지 않는다 (CLAUDE.md "의사결정 기록" 절).
+
+이 계획서는 그때까지 **상한을 vCenter 9.0(VCF 9.x)으로 가정**하고 설계한다 (D-020).
+ROADMAP §16-3이 이미 "Step 2 산출물로 CST-10 버전 확정"을 예정하고 있으므로,
+**실측 결과와 함께 하한·상한을 동시에 확정**하는 것이 자연스럽다.
+
+### 14.5 확인 출처
+
+- [VCF SDKs, APIs, and CLIs — Product Support Notes (VCF 9.0)](https://techdocs.broadcom.com/us/en/vmware-cis/vcf/vcf-9-0-and-later/9-0/release-notes/vmware-cloud-foundation-90-release-notes/platform-product-support-notes/vcf-sdks-apis-and-clis-product-support-notes.html)
+- [Product Support Notes — vSphere (VCF 9.0)](https://techdocs.broadcom.com/us/en/vmware-cis/vcf/vcf-9-0-and-later/9-0/release-notes/vmware-cloud-foundation-90-release-notes/platform-product-support-notes/product-support-notes-vsphere.html) — 인증 변경·deprecated 목록
+- [vSphere Web Services API (VCF 9.0)](https://techdocs.broadcom.com/us/en/vmware-cis/vcf/vcf-9-0-and-later/9-0/administration-sdks-cli-and-tools/about-vmware-cloud-foundation-development/core-vsphere-apis/web-services-vim-api.html) — SOAP 유지 확인
+- [Managing NSX Distributed Virtual Port Groups](https://techdocs.broadcom.com/us/en/vmware-cis/vcf/vcf-9-0-and-later/9-0/advanced-network-management/administration-guide/host-switches/managing-nsx-on-a-vsphere-distributed-switch.html)
+- [Security in VMware Cloud Foundation 9.0](https://blogs.vmware.com/cloud-foundation/2025/08/05/security-vmware-cloud-foundation-9-0/) — TLS 프로파일
+- [ESX to ESXi and Back Again](https://vninja.net/2025/06/18/esx-to-esxi-and-back-again/) — 제품명 환원
+- [pyvmomi CHANGELOG](https://github.com/vmware/pyvmomi/blob/master/CHANGELOG.md)

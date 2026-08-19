@@ -15,9 +15,11 @@ from src.domain.exceptions import (
     CollectionError,
     DuplicateError,
     NotFoundError,
-    PermissionError as DomainPermissionError,
     PortalError,
     ValidationError,
+)
+from src.domain.exceptions import (
+    PermissionError as DomainPermissionError,
 )
 
 logger = logging.getLogger(__name__)

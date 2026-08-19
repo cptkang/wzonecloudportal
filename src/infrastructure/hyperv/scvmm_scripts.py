@@ -12,7 +12,7 @@ Step 1 도메인 모델(MVP) 범위로 축소했다 — 계획 05 §7.2와의 �
 **조회 cmdlet만 쓴다** (D-005). VMM의 `Read-` 접두사 cmdlet(VM 새로 고침)은 이름과 달리
 VMM DB를 갱신하는 쓰기 동작이므로 금지다 (계획 05 §8.5·§14). 검사:
 grep -nE "(Set|New|Remove|Start|Stop|Save|Suspend|Resume|Repair|Move|Register|Unregister|Read|Install|Reset|Restore|Update|Grant|Revoke)-SC" src/infrastructure/hyperv/
-"""
+"""  # noqa: E501 - 문서용 grep 명령은 쪼개면 그대로 복사해 쓸 수 없다
 
 from __future__ import annotations
 

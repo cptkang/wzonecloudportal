@@ -18,6 +18,7 @@ from typing import Any
 
 from pyVmomi import vim, vmodl
 
+from src.domain.exceptions import CollectionError
 from src.infrastructure.vcenter.session import VCenterSession
 
 logger = logging.getLogger(__name__)
@@ -56,6 +57,10 @@ class PropertyCollectorReader:
 
     def _create_view_sync(self, obj_type: type) -> vim.view.ContainerView:
         content = self._session.content
+        # 권한이 부족하면 `viewManager`가 None으로 온다. 그대로 접근하면 AttributeError가
+        # 나서 원인이 "권한 부족"이라는 것이 메시지에서 사라진다.
+        if content.viewManager is None:
+            raise CollectionError("ViewManager에 접근할 수 없습니다. 계정 권한을 확인하세요.")
         return content.viewManager.CreateContainerView(
             container=content.rootFolder, type=[obj_type], recursive=True
         )

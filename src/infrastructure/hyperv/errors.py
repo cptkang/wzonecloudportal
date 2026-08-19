@@ -20,6 +20,8 @@ from collections.abc import Iterable
 
 from pypsrp.exceptions import (
     AuthenticationError as PypsrpAuthenticationError,
+)
+from pypsrp.exceptions import (
     WinRMError,
     WinRMTransportError,
     WSManFaultError,
@@ -28,10 +30,12 @@ from pypsrp.exceptions import (
 from src.domain.exceptions import (
     AuthenticationError,
     CollectionError,
-    PermissionError as DomainPermissionError,
     PortalError,
     UnreachableError,
     ValidationError,
+)
+from src.domain.exceptions import (
+    PermissionError as DomainPermissionError,
 )
 from src.infrastructure.security.masking import sanitize_message
 
@@ -54,8 +58,9 @@ def translate_error(exc: Exception, *, secrets: Iterable[str] = ()) -> PortalErr
         )
     if isinstance(exc, (socket.timeout, asyncio.TimeoutError, TimeoutError)):
         return UnreachableError("응답 시간이 초과되었습니다.")
-    if isinstance(exc, WinRMTransportError) or isinstance(
-        exc, (socket.gaierror, ConnectionRefusedError, ConnectionError, OSError)
+    if isinstance(
+        exc,
+        (WinRMTransportError, socket.gaierror, ConnectionRefusedError, ConnectionError, OSError),
     ):
         return UnreachableError("WinRM 서비스에 연결할 수 없습니다. 포트와 방화벽을 확인하세요.")
     # 경로 B — 대상이 SCVMM 서버가 아니거나 콘솔이 없다. 연결 유형 선택 오류일 가능성이 높다.

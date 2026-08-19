@@ -25,7 +25,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.infrastructure.hyperv.host_scripts import (  # noqa: E402
+from src.infrastructure.hyperv.host_scripts import (
     FUNCTION_CLUSTER_NODES,
     FUNCTION_LIST_VMS,
     FUNCTION_PROBE,

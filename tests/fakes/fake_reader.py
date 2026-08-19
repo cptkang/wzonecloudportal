@@ -64,7 +64,7 @@ class FakeInventoryReader:
     async def close_session(self) -> None:
         self.session_open = False
 
-    async def __aenter__(self) -> "FakeInventoryReader":
+    async def __aenter__(self) -> FakeInventoryReader:
         await self.start_session()
         return self
 

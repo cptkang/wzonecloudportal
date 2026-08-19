@@ -41,7 +41,8 @@ def create_access_token(user: AuthenticatedUser, settings: Settings) -> str:
         "exp": int((now + timedelta(minutes=settings.jwt_expire_minutes)).timestamp()),
         "jti": uuid4().hex,
     }
-    return jwt.encode(payload, settings.jwt_secret.get_secret_value(), algorithm=ALGORITHM)
+    token = jwt.encode(payload, settings.jwt_secret.get_secret_value(), algorithm=ALGORITHM)
+    return str(token)  # jose는 스텁이 없어 Any를 반환한다
 
 
 def decode_access_token(token: str, settings: Settings) -> TokenClaims:

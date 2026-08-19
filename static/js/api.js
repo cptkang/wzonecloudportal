@@ -315,19 +315,22 @@ const mock = (() => {
     unknown: '확인 필요',
   };
 
+  // 마지막 열은 **구성값 OS**(`config.guestFullName`)다. 게스트 도구가 없어도 수집되며,
+  // vCenter는 감지값("Ubuntu 22.04 LTS")과 다른 구성 템플릿 이름("Ubuntu Linux (64-bit)")을 준다.
+  // `tools_not_installed` + os_name 없음 행이 이 값을 쓰는 경로다 (ROADMAP §5.3).
   const vms = [
-    ['web-prd-01', 'c1', 'on', 4, 8192, 'Ubuntu 22.04 LTS', 'guest_tools', 'available', 'web-prd-01.corp.local', 'host-1042', 12],
-    ['web-prd-02', 'c1', 'on', 4, 8192, 'Ubuntu 22.04 LTS', 'guest_tools', 'available', 'web-prd-02.corp.local', 'host-1043', 12],
-    ['api-prd-01', 'c1', 'on', 8, 16384, null, null, 'tools_not_running', null, 'host-1041', 12],
-    ['batch-prd-01', 'c1', 'off', 8, 32768, 'Rocky Linux 8', 'vm_config', 'unknown', null, 'host-1047', 12],
-    ['db-prd-01', 'c1', 'on', 16, 131072, 'Oracle Linux 8.9', 'guest_tools', 'available', 'db-prd-01.corp.local', 'host-1048', 12],
-    ['dev-jenkins', 'c1', 'on', 8, 16384, 'Debian 12', 'guest_tools', 'available', 'dev-jenkins.corp.local', 'host-1052', 12],
-    ['dev-sandbox-14', 'c1', 'suspended', 2, 8192, 'Windows 11 23H2', 'vm_config', 'tools_not_running', null, 'host-1055', 12],
-    ['dev-sandbox-15', 'c1', 'off', 2, 4096, null, null, 'tools_not_installed', null, 'host-1055', 12],
-    ['legacy-erp-01', 'c1', 'on', 8, 24576, null, null, 'tools_not_installed', null, 'host-1061', 12],
-    ['dmz-relay-01', 'c2', 'on', 2, 2048, 'Alpine 3.20', 'guest_tools', 'available', 'dmz-relay-01.corp.local', 'host-2011', 4260],
-    ['mon-graf-01', 'c2', 'on', 4, 8192, 'Ubuntu 24.04 LTS', 'guest_tools', 'available', 'mon-graf-01.corp.local', 'host-2012', 4260],
-    ['bkp-proxy-01', 'c2', 'on', 6, 12288, 'Windows Server 2019', 'vm_config', 'tools_not_running', null, 'host-2013', 4260],
+    ['web-prd-01', 'c1', 'on', 4, 8192, 'Ubuntu 22.04 LTS', 'guest_tools', 'available', 'web-prd-01.corp.local', 'host-1042', 12, 'Ubuntu Linux (64-bit)'],
+    ['web-prd-02', 'c1', 'on', 4, 8192, 'Ubuntu 22.04 LTS', 'guest_tools', 'available', 'web-prd-02.corp.local', 'host-1043', 12, 'Ubuntu Linux (64-bit)'],
+    ['api-prd-01', 'c1', 'on', 8, 16384, null, null, 'tools_not_running', null, 'host-1041', 12, 'Ubuntu Linux (64-bit)'],
+    ['batch-prd-01', 'c1', 'off', 8, 32768, 'Rocky Linux 8', 'vm_config', 'unknown', null, 'host-1047', 12, 'Rocky Linux (64-bit)'],
+    ['db-prd-01', 'c1', 'on', 16, 131072, 'Oracle Linux 8.9', 'guest_tools', 'available', 'db-prd-01.corp.local', 'host-1048', 12, 'Oracle Linux (64-bit)'],
+    ['dev-jenkins', 'c1', 'on', 8, 16384, 'Debian 12', 'guest_tools', 'available', 'dev-jenkins.corp.local', 'host-1052', 12, 'Debian GNU/Linux 12 (64-bit)'],
+    ['dev-sandbox-14', 'c1', 'suspended', 2, 8192, 'Windows 11 23H2', 'vm_config', 'tools_not_running', null, 'host-1055', 12, 'Microsoft Windows 11 (64-bit)'],
+    ['dev-sandbox-15', 'c1', 'off', 2, 4096, null, null, 'tools_not_installed', null, 'host-1055', 12, 'Microsoft Windows 11 (64-bit)'],
+    ['legacy-erp-01', 'c1', 'on', 8, 24576, null, null, 'tools_not_installed', null, 'host-1061', 12, 'Microsoft Windows Server 2012 (64-bit)'],
+    ['dmz-relay-01', 'c2', 'on', 2, 2048, 'Alpine 3.20', 'guest_tools', 'available', 'dmz-relay-01.corp.local', 'host-2011', 4260, 'Other 5.x Linux (64-bit)'],
+    ['mon-graf-01', 'c2', 'on', 4, 8192, 'Ubuntu 24.04 LTS', 'guest_tools', 'available', 'mon-graf-01.corp.local', 'host-2012', 4260, 'Ubuntu Linux (64-bit)'],
+    ['bkp-proxy-01', 'c2', 'on', 6, 12288, 'Windows Server 2019', 'vm_config', 'tools_not_running', null, 'host-2013', 4260, 'Microsoft Windows Server 2019 (64-bit)'],
   ].map((r, i) => {
     const availability = r[7];
     const collected = availability === 'available';
@@ -341,6 +344,8 @@ const mock = (() => {
       power_state: r[2],
       vcpu_count: r[3],
       memory_mb: r[4],
+      // 구성값 OS는 게스트 도구 산출물이 아니므로 guest 밖에 둔다 (ROADMAP §5.3)
+      configured_os: r[11],
       // 게스트 정보는 중첩 객체다 (계획 08 §6.3)
       guest: {
         availability,

@@ -1,0 +1,46 @@
+# 런타임 의존성 (pyproject.toml [project].dependencies 전개)
+# 대상: RHEL/Rocky 9 (glibc 2.34) · CPython 3.11 · x86_64
+# 오프라인 설치: pip install --no-index --find-links=runtime -r requirements-runtime.txt
+
+alembic==1.19.1
+annotated_doc==0.0.5
+annotated_types==0.8.0
+anyio==4.14.2
+asyncpg==0.31.0
+bcrypt==5.0.0
+certifi==2026.7.22
+cffi==2.1.1
+charset_normalizer==3.5.1
+click==8.4.2
+cryptography==50.0.0
+ecdsa==0.19.2
+fastapi==0.141.1
+greenlet==3.5.5
+h11==0.16.0
+httptools==0.8.0
+idna==3.19
+mako==1.4.1
+markupsafe==3.0.3
+pyasn1==0.6.4
+pycparser==3.0
+pydantic==2.13.4
+pydantic_core==2.46.4
+pydantic_settings==2.15.0
+pypsrp==0.9.1
+pyspnego==0.12.1
+python_dotenv==1.2.3
+python_jose==3.5.0
+pyvmomi==9.1.0.0
+pyyaml==6.0.3
+requests==2.34.2
+rsa==4.9.1
+six==1.17.0
+sqlalchemy==2.0.52
+starlette==1.6.0
+typing_extensions==4.16.0
+typing_inspection==0.4.4
+urllib3==2.7.0
+uvicorn==0.52.4
+uvloop==0.22.1
+watchfiles==1.2.0
+websockets==17.0.1

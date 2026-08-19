@@ -19,9 +19,11 @@ from pyVmomi import vim, vmodl
 from src.domain.exceptions import (
     AuthenticationError,
     CollectionError,
-    PermissionError as DomainPermissionError,
     PortalError,
     UnreachableError,
+)
+from src.domain.exceptions import (
+    PermissionError as DomainPermissionError,
 )
 from src.infrastructure.security.masking import sanitize_message
 

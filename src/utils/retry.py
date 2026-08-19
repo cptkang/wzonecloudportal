@@ -29,12 +29,15 @@ async def retry_async(
     for attempt in range(1, max_attempts + 1):
         try:
             return await fn()
-        except Exception as exc:  # noqa: BLE001 - retryable 판정을 위해 넓게 잡는다
+        except Exception as exc:
             if not getattr(exc, "retryable", False):
                 raise
             last_exc = exc
             if attempt >= max_attempts:
                 break
             await asyncio.sleep(min(base_delay * (2 ** (attempt - 1)), max_delay))
-    assert last_exc is not None
+    # `assert`는 `python -O`에서 제거되어 `raise None`(TypeError)이 된다.
+    # 루프가 최소 1회 돌므로 도달하지 않지만 명시적 분기로 둔다.
+    if last_exc is None:
+        raise RuntimeError("재시도 루프가 예외 없이 종료되었습니다.")
     raise last_exc

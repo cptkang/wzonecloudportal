@@ -32,7 +32,6 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from src.domain.exceptions import PortalError  # noqa: E402
-from src.infrastructure.hyperv.runner import parse_ps_json  # noqa: E402
 from src.infrastructure.hyperv.scvmm_mapper import map_scvmm_vm  # noqa: E402
 from src.infrastructure.hyperv.scvmm_scripts import (  # noqa: E402
     SCRIPT_PROBE_SCVMM,

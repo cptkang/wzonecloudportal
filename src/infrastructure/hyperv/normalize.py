@@ -44,10 +44,11 @@ def map_power_state(state: int | str | None) -> PowerState:
         return PowerState.UNKNOWN
     if isinstance(state, bool):  # bool은 int의 하위 타입 — 잘못된 입력으로 취급한다
         return PowerState.UNKNOWN
-    if isinstance(state, int):
-        mapped = HYPERV_ENABLED_STATE_MAP.get(state)
-    else:
-        mapped = SCVMM_STATE_MAP.get(str(state))
+    mapped = (
+        HYPERV_ENABLED_STATE_MAP.get(state)
+        if isinstance(state, int)
+        else SCVMM_STATE_MAP.get(str(state))
+    )
     if mapped is None:
         logger.info("매핑되지 않은 전원 상태", extra={"raw_power_state": str(state)})
         return PowerState.UNKNOWN

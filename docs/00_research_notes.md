@@ -352,14 +352,14 @@ VMware Aria Operations는 고아 디스크를 **보수적으로** 리포팅하�
 | # | 항목 | 왜 검증이 필요한가 | 확인 방법 |
 |---|---|---|---|
 | 1 | RVTools 전체 컬럼 목록 | 공식 README(404)·튜토리얼(403) 접근 실패로 2차 자료 기반 | RVTools 직접 실행 또는 공식 배포판 문서 확인 |
-| 2 | pyVmomi 속성 경로의 버전별 차이 | vSphere 버전에 따라 속성 존재 여부·형식이 다를 수 있음 | 대상 vCenter 버전에서 실제 조회 |
+| 2 | pyVmomi 속성 경로의 버전별 차이 | vSphere 버전에 따라 속성 존재 여부·형식이 다를 수 있음 | 대상 vCenter 버전에서 실제 조회. **절반 해소 (2026-08-19)** — `plans/04` §5의 속성 경로가 **pyVmomi 9.1.0.0 바인딩에 전부 존재함을 확인**(상한 쪽). 하한(6.5) 실측은 잔여 (D-020) |
 | 3 | 대규모 환경 수집 소요 시간 | 관리 규모(NFR-104)가 미확정이라 목표치를 못 세움 | 규모 확정 후 파일럿 측정 |
 | 4 | Hyper-V KVP 속성의 게스트 OS별 가용성 | Linux 게스트의 KVP 지원 범위가 Windows와 다를 수 있음 | 대상 환경의 Linux VM에서 실측 |
 | 5 | WinRM 인증 방식별 필요 설정 | 도메인 구성에 따라 TrustedHosts·CredSSP 설정이 다름 | 대상 Hyper-V 환경 관리자와 확인. **라이브러리 측은 확인됨 (2026-08-14, pypsrp 0.9.1)**: CredSSP는 `pypsrp[credssp]`(requests-credssp), Kerberos는 `pypsrp[kerberos]`(pyspnego[kerberos]) extra 필요. 비동기 API 없음 → 전부 `asyncio.to_thread` (D-018) |
 | 6 | Failover Cluster 인벤토리 조회 방식 | 클러스터 단위 조회 API를 직접 확인하지 못함 | Failover Clustering PowerShell 모듈 문서 확인 |
 | 7 | ~~vSphere Tags 수집 방법~~ | **해소됨 (2026-08-06)** — pyVmomi는 SOAP(vim25) 전용이고 Tags는 vSphere Automation API(REST) 소관임이 확인됨. **수집하지 않기로 결정** (D-010). Custom Attributes는 SOAP `CustomFieldsManager`로 수집 | — |
 | 8 | 자격증명 암호화 키 관리 방식 | 조사 범위에 없었음. 배포 환경에 따라 선택지가 다름 | NFR-208 `[TODO]` 확정 시 별도 조사 |
-| 9 | **pyVmomi의 vSphere 6.5 호환 범위** | 지원 하한을 6.5로 확정했으나(CST-10) 6.5는 VMware EOL 버전이라 최신 pyVmomi가 호환을 보증하지 않을 수 있음 | 대상 환경의 실제 버전 분포 확인 후 pyVmomi 버전 고정 (`plans/01`) |
+| 9 | **pyVmomi의 vSphere 6.5 호환 범위** | 지원 하한을 6.5로 확정했으나(CST-10) 6.5는 VMware EOL 버전이라 최신 pyVmomi가 호환을 보증하지 않을 수 있음 | 대상 환경의 실제 버전 분포 확인 후 pyVmomi 버전 고정 (`plans/01`). **근거 확정 (2026-08-19)** — Broadcom 호환 정책은 **직전 4개 릴리스**이므로 6.5는 범위 밖. PyPI 최신은 9.1.0.0이고 **`pyproject.toml`은 아직 무핀**이다. VCF 9.0부터 독립 SDK 배포 중단(VCF Python SDK로 통합). 상세 `plans/04` §14.2, D-020 |
 | 10 | Read-Only 역할에서 `customValue`·`customFieldsManager.field` 조회 가능 여부 | 조회 불가면 FR-606의 남은 절반(Custom Attributes)도 수집 불가 | Read-Only 계정으로 실측 (`plans/04` §5.2) |
 | 11 | **SCVMM `Get-SCVirtualMachine`의 `VMId` 존재 여부** | `native_id`의 근거다. 비어 있는 VM이 있으면 CI 식별이 깨진다 (D-012) | SCVMM에서 실측 (`plans/05` §7.2·§8.4) |
 | 12 | **SCVMM `OperatingSystem.Name`의 갱신 시점** | VM 생성 시 지정값인지 에이전트 갱신값인지에 따라 OS 출처 판정(FR-304)이 달라진다 | Tools 미설치 VM과 설치 VM을 비교 실측 |
@@ -369,6 +369,7 @@ VMware Aria Operations는 고아 디스크를 **보수적으로** 리포팅하�
 | 16 | ~~경로 A의 읽기 전용 계정 실현 방법~~ | **해소됨 (2026-08-07)** — SCVMM 도입 확정으로 경로 A 대상이 소수가 되어 **JEA 제약 세션**을 채택 (D-012 결정 7). 미해결로 남은 것은 아래 17·18 | — |
 | 17 | **`pypsrp`의 JEA 세션 구성 지원** | `RunspacePool`에 `configuration_name`을 지정해 JEA 엔드포인트에 붙을 수 있어야 한다 | **절반 해소 (2026-08-14)** — pypsrp 0.9.1의 `RunspacePool.__init__`이 `configuration_name` 파라미터(기본 `Microsoft.PowerShell`)를 지원함을 시그니처로 확인 (D-018). 인증 예외도 `pypsrp.exceptions.AuthenticationError` 타입 매칭으로 확정. **실제 JEA 엔드포인트 접속·허용 함수 외 차단 확인은 실환경 실측 필요** (`plans/05` §12-12) |
 | 18 | **JEA 함수 반환값의 직렬화** | 제약 세션은 객체를 역직렬화된 형태로 준다. 함수 안에서 `ConvertTo-Json`까지 마쳐 문자열을 반환하면 회피 가능한지 확인 | JEA 세션에서 수집 함수 실행 후 출력 형태 확인 |
+| 19 | **최신 VCF(9.x) 환경에서의 vCenter 수집 성립 여부** | 조사·계획이 지원 **하한(6.5)** 기준으로만 작성되어 상한 검증이 전무했다. vCenter 9.0은 **사용자명+암호 단독 로그인을 차단**하고, NSX 세그먼트·vSAN·제품명(ESX)이 8.x와 다르다 | 대상 환경 버전 분포 확인 후 `plans/ROADMAP.md` §15.5의 7개 항목 실측 (`plans/04` §14, D-020) |
 
 ---
 

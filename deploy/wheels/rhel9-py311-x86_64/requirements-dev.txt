@@ -1,0 +1,25 @@
+# 개발/테스트 의존성 (pyproject.toml [project.optional-dependencies].dev 전개)
+# 대상: RHEL/Rocky 9 (glibc 2.34) · CPython 3.11 · x86_64
+# 오프라인 설치: pip install --no-index --find-links=dev -r requirements-dev.txt
+
+anyio==4.14.2
+ast_serialize==0.8.0
+certifi==2026.7.22
+coverage==7.15.4
+h11==0.16.0
+httpcore==1.0.9
+httpx==0.28.1
+idna==3.19
+iniconfig==2.3.0
+librt==0.15.0
+mypy==2.3.1
+mypy_extensions==1.1.0
+packaging==26.3
+pathspec==1.1.1
+pluggy==1.6.0
+pygments==2.21.0
+pytest==9.1.1
+pytest_asyncio==1.4.0
+pytest_cov==7.1.0
+ruff==0.16.3
+typing_extensions==4.16.0

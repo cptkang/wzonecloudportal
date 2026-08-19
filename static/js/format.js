@@ -89,16 +89,32 @@ function stateClass(field) {
  * 수집 불가여도 폴백으로 남은 이전 값이 있으면 "마지막 확인"으로 병기한다 (ROADMAP §7.4). */
 function osField(vm) {
   const g = vm.guest || {};
-  if (!g.is_collected) {
-    return fieldOf(null, {
-      unavailableReason: g.unavailable_reason || '확인 필요',
-      last: g.os_name || '',
-      lastAgo: g.os_name ? agoText(minutesSince(g.observed_at)) : '',
+
+  if (g.is_collected) {
+    return fieldOf(g.os_name, {
+      suffix: g.os_source === 'vm_config' ? ' (구성값)' : '',
     });
   }
-  return fieldOf(g.os_name, {
-    suffix: g.os_source === 'vm_config' ? ' (구성값)' : '',
-  });
+
+  // 폴백으로 남은 이전 게스트 값이 가장 권위 있다 — 실제로 도구가 보고했던 값이다 (ROADMAP §7.4)
+  if (g.os_name) {
+    return fieldOf(null, {
+      unavailableReason: g.unavailable_reason || '확인 필요',
+      last: g.os_name,
+      lastAgo: agoText(minutesSince(g.observed_at)),
+    });
+  }
+
+  // 도구가 없어도 **VM 구성값 OS는 수집된다** (ROADMAP §5.3:
+  // "guest.guestFullName → 없으면 config.guestFullName, 출처 표시 필수").
+  // 이 분기가 없으면 도구 미설치 VM은 알 수 있는 OS까지 화면에서 사라진다.
+  if (vm.configured_os) {
+    const field = fieldOf(vm.configured_os, { suffix: ' (구성값)' });
+    field.sub = g.unavailable_reason || '확인 필요';  // 도구 상태는 보조 줄에 남긴다
+    return field;
+  }
+
+  return fieldOf(null, { unavailableReason: g.unavailable_reason || '확인 필요' });
 }
 
 /* ── 전원 상태 (§2.3) ──────────────────────────────────────── */

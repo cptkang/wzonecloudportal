@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from uuid import UUID
@@ -18,8 +19,10 @@ from src.domain.connection import Connection
 from src.domain.enums import ConnectionStatus
 from src.domain.exceptions import (
     AuthenticationError,
-    PermissionError as DomainPermissionError,
     PortalError,
+)
+from src.domain.exceptions import (
+    PermissionError as DomainPermissionError,
 )
 from src.domain.ports import ReaderFactory
 from src.domain.resource import VirtualMachine
@@ -84,15 +87,29 @@ class CollectService:
 
         created = updated = unchanged = 0
         batch: list[VirtualMachine] = []
+        # **어댑터 조회 시간과 DB 반영 시간을 분리해서 잰다.** 총 시간만 재면 Step 2 실측
+        # (ROADMAP §15.3-13)에서 병목이 vCenter 왕복인지 DB인지 구분할 수 없고,
+        # 무엇을 최적화할지 정할 근거가 없다 (D-020 후속, `tasks/plan.md` AD-1).
+        adapter_ns = db_ns = 0
+        batches = 0
         try:
+            mark = time.perf_counter_ns()
             async for vm in reader.list_virtual_machines():
+                adapter_ns += time.perf_counter_ns() - mark
                 batch.append(vm)
                 if len(batch) >= self._settings.collection_batch_size:
+                    mark = time.perf_counter_ns()
                     c, u, n = await self._flush(connection.connection_id, batch, observed_at)
+                    db_ns += time.perf_counter_ns() - mark
+                    batches += 1
                     created, updated, unchanged = created + c, updated + u, unchanged + n
                     batch.clear()
+                mark = time.perf_counter_ns()
             if batch:
+                mark = time.perf_counter_ns()
                 c, u, n = await self._flush(connection.connection_id, batch, observed_at)
+                db_ns += time.perf_counter_ns() - mark
+                batches += 1
                 created, updated, unchanged = created + c, updated + u, unchanged + n
         except AuthenticationError as exc:
             await self._connections.mark_failure(
@@ -101,6 +118,19 @@ class CollectService:
             return _failure(connection.connection_id, exc.message)
         finally:
             await reader.close_session()
+
+        # **집계 수치만 남긴다.** 인벤토리 정보 자체가 민감 정보이므로 개별 VM 이름·ID를
+        # 로그에 쓰지 않는다 (NFR-206).
+        logger.info(
+            "수집 구간별 소요",
+            extra={
+                "connection_id": str(connection.connection_id),
+                "adapter_ms": adapter_ns // 1_000_000,
+                "db_ms": db_ns // 1_000_000,
+                "batch_count": batches,
+                "vm_count": created + updated + unchanged,
+            },
+        )
 
         # 어댑터는 부분 실패를 예외가 아니라 outcome으로 보고한다 (FR-204).
         outcome = next(iter(reader.get_outcomes()), None)

@@ -14,6 +14,7 @@ import pytest
 from pydantic import SecretStr
 from sqlalchemy import func, select
 
+from src.application.collect_service import CollectService
 from src.config import Settings, get_settings
 from src.domain.connection import Connection
 from src.domain.enums import ConnectionKind, ConnectionStatus, GuestInfoAvailability
@@ -23,8 +24,6 @@ from src.infrastructure.repository.vm_repo import VirtualMachineRepository
 from src.infrastructure.security.cipher import CredentialCipher
 from src.infrastructure.security.keys import EnvKeyProvider
 from tests.fakes.fake_reader import FakeInventoryReader, make_vm
-
-from src.application.collect_service import CollectService
 
 
 @pytest.fixture
@@ -189,3 +188,130 @@ async def test_session_is_closed_even_on_failure(session, connection, settings) 
     await session.commit()
 
     assert reader.is_session_closed
+
+
+# ── 예상하지 못한 예외 (T4) ──────────────────────────────────────
+#
+# `CollectService`는 자신이 아는 실패(인증·권한·도달 불가)를 이미 기록한다.
+# 아래는 **그 밖의 예외** — DB 오류·매핑 버그 등 포탈 쪽 문제 — 를 다룬다.
+# 기록되지 않으면 UI 폴링이 `last_error`를 보지 못해 "수집 중…"이 풀리지 않는다.
+
+
+async def test_unexpected_exception_is_recorded_on_the_connection(
+    session_factory, session, connection, settings
+) -> None:
+    from src.api.routes.connections import _run_collection
+
+    async def boom(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("예상치 못한 오류")
+
+    # `CollectService`가 잡지 못하고 통과시키는 예외를 흉내낸다.
+    # 리더 팩토리는 `_run_collection` 내부에서 만들어지므로 서비스 단에서 주입한다.
+    original = CollectService.collect
+    CollectService.collect = boom  # type: ignore[method-assign]
+    try:
+        await _run_collection(session_factory, settings, connection.connection_id)
+    finally:
+        CollectService.collect = original  # type: ignore[method-assign]
+
+    await session.rollback()  # 다른 세션이 쓴 값을 읽기 위해 스냅샷을 새로 뜬다
+    row = await session.get(ConnectionRow, connection.connection_id)
+    assert row.last_error, "예외가 연결 상태에 남지 않으면 UI가 '수집 중…'에 머문다"
+    assert row.status == ConnectionStatus.COLLECTION_ERROR.value
+
+
+async def test_unexpected_failure_message_has_no_credentials(
+    session_factory, session, connection, settings
+) -> None:
+    """오류 메시지에 자격증명이 섞이면 안 된다 (NFR-203)."""
+    secret = "collect-test-password"  # `connection` 픽스처가 쓰는 값
+
+    async def leak(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError(f"연결 실패 (password={secret})")
+
+    original = CollectService.collect
+    CollectService.collect = leak  # type: ignore[method-assign]
+    try:
+        await _run_collection_for(session_factory, settings, connection)
+    finally:
+        CollectService.collect = original  # type: ignore[method-assign]
+
+    await session.rollback()
+    row = await session.get(ConnectionRow, connection.connection_id)
+    assert row.last_error
+    assert secret not in row.last_error
+
+
+async def _run_collection_for(session_factory, settings, connection) -> None:
+    from src.api.routes.connections import _run_collection
+
+    await _run_collection(session_factory, settings, connection.connection_id)
+
+
+async def test_new_attempt_clears_the_previous_error(session, connection, settings) -> None:
+    """이전 오류를 지우지 않으면 재수집이 **시작하자마자** 실패로 보인다.
+
+    UI(`connections.js`의 `connState`)는 `last_error`만 보고 실패를 판정한다.
+    """
+    cipher = CredentialCipher(EnvKeyProvider(settings))
+    repo = ConnectionRepository(session, cipher)
+
+    await repo.mark_failure(
+        connection.connection_id, "이전 수집 오류", ConnectionStatus.UNREACHABLE
+    )
+    await session.commit()
+
+    await repo.mark_attempt(connection.connection_id)
+    await session.commit()
+
+    row = await session.get(ConnectionRow, connection.connection_id)
+    assert row.last_error is None
+    assert row.last_attempt_at is not None
+
+
+async def test_collection_logs_adapter_and_db_time_separately(
+    session, connection, settings
+) -> None:
+    """총 시간만 재면 병목이 vCenter 왕복인지 DB인지 알 수 없다 (ROADMAP §15.3-13).
+
+    caplog 대신 로거에 핸들러를 직접 붙인다 — 어떤 로거를 보는지 명시된다.
+    """
+    import logging
+
+    records: list[logging.LogRecord] = []
+
+    class _Capture(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(record)
+
+    vms = [
+        make_vm(connection_id=connection.connection_id, name=f"vm-{i}", native_id=f"i-{i}")
+        for i in range(3)
+    ]
+
+    log = logging.getLogger("src.application.collect_service")
+    handler = _Capture()
+    previous = log.level
+    log.addHandler(handler)
+    log.setLevel(logging.INFO)
+    try:
+        await _service(session, FakeInventoryReader(connection, vms=vms), settings).collect(
+            connection
+        )
+        await session.commit()
+    finally:
+        log.removeHandler(handler)
+        log.setLevel(previous)
+
+    matches = [r for r in records if r.msg == "수집 구간별 소요"]
+    assert matches, f"계측 로그 없음. 기록된 것: {[r.msg for r in records]}"
+    record = matches[0]
+
+    # 두 구간이 **분리**되어야 한다. 합쳐진 값 하나로는 무엇을 고칠지 정할 수 없다.
+    assert hasattr(record, "adapter_ms")
+    assert hasattr(record, "db_ms")
+    assert record.vm_count == 3
+    assert record.batch_count >= 1
+
+    # 인벤토리 정보 자체가 민감하다 — 개별 VM 이름이 로그에 남으면 안 된다 (NFR-206)
+    assert all("vm-0" not in str(getattr(r, "msg", "")) for r in records)

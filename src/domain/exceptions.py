@@ -20,7 +20,7 @@ class PortalError(Exception):
         self.detail = detail or {}
 
 
-class ConnectionError(PortalError):  # noqa: A001 - 도메인 용어를 우선한다
+class ConnectionError(PortalError):
     """하이퍼바이저 연결 관련 오류."""
 
     retryable: bool = True
@@ -36,7 +36,7 @@ class AuthenticationError(ConnectionError):
     retryable = False
 
 
-class PermissionError(ConnectionError):  # noqa: A001 - 도메인 용어를 우선한다
+class PermissionError(ConnectionError):
     """권한 부족. 자격증명은 유효하므로 재시도해도 결과가 같다."""
 
     retryable = False

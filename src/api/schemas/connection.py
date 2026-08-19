@@ -102,7 +102,7 @@ class ConnectionResponse(BaseModel):
     vm_count: int = 0
 
     @classmethod
-    def from_domain(cls, conn: Connection, vm_count: int = 0) -> "ConnectionResponse":
+    def from_domain(cls, conn: Connection, vm_count: int = 0) -> ConnectionResponse:
         return cls(
             connection_id=conn.connection_id,
             kind=conn.kind,
@@ -141,7 +141,7 @@ class ConnectionTestResponse(BaseModel):
     failed_stage: CheckStage | None
 
     @classmethod
-    def from_domain(cls, result: ConnectionCheckResult) -> "ConnectionTestResponse":
+    def from_domain(cls, result: ConnectionCheckResult) -> ConnectionTestResponse:
         return cls(
             is_usable=result.is_usable,
             stages=[

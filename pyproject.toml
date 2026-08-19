@@ -11,7 +11,9 @@ dependencies = [
     "sqlalchemy[asyncio]>=2",
     "asyncpg",
     "alembic",
-    "pyvmomi",                # vCenter 수집 (계획 04)
+    # 상한·하한을 고정한다. Broadcom 호환 정책은 **직전 4개 vSphere 릴리스**이며,
+    # 9.x는 `pyVmomi.Feature`·`pyVmomiSettings` 제거 등 파괴적 변경이 있었다 (계획 04 §14.2, D-020).
+    "pyvmomi>=8.0.3,<10",     # vCenter 수집 (계획 04)
     "pypsrp",                 # Hyper-V/SCVMM WinRM 수집 (계획 05). Kerberos/CredSSP는 extras — 계획 05 §4.1
     "cryptography",           # 자격증명 AES-GCM (계획 10)
     "bcrypt>=4",              # 비밀번호 해시 (D-015)
@@ -33,8 +35,57 @@ include = ["src*"]
 line-length = 120
 target-version = "py311"
 
+[tool.ruff.lint]
+# 기본값(E4/E7/E9/F)만 쓰면 코드에 붙은 `noqa: BLE001/SLF001/ARG001`이 가리키는 룰이
+# **꺼져 있어 아무것도 억제하지 않는다.** 실제로 켜서 검사한다.
+# G(logging-format)는 `extra`가 LogRecord 예약 필드와 충돌하는 실제 버그를 잡았다.
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # isort
+    "UP",       # pyupgrade
+    "B",        # bugbear
+    "SIM",      # simplify
+    "ASYNC",    # 동기 라이브러리를 to_thread로 감싸는 구조라 오용 검사가 중요하다
+    "G",        # logging 포맷·extra 충돌
+    "BLE",      # blind except
+    "SLF",      # private member 접근
+    "ARG",      # 미사용 인자
+    "S",        # bandit — 자격증명 보호가 핵심 제약이다 (NFR-203·208)
+    "RUF",
+]
+ignore = [
+    # 전부 오탐이다: `PASSWORD_CHANGE` 같은 **감사 액션 enum 이름**과 테스트 상수를
+    # 비밀번호 값으로 오인한다. 실제 자격증명 노출은 `masking.py`와 테스트가 막는다.
+    "S105", "S106",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# 테스트는 assert로 검증한다. fake 객체는 인터페이스를 흉내내느라 미사용 인자와
+# private 접근이 정당하다.
+"tests/**" = ["S101", "ARG", "SLF"]
+# 목업 스크립트는 개발용이다.
+"scripts/**" = ["S603", "S607"]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI는 기본값 위치의 호출이 관용구다 (`Query(...)`, `Depends(...)`).
+# B008로 잡으면 프레임워크를 쓸 수 없다.
+extend-immutable-calls = ["fastapi.Query", "fastapi.Depends", "fastapi.Path", "fastapi.Body"]
+
 [tool.mypy]
 strict = true
+
+# pyVmomi는 vim/vmodl 타입을 **런타임에 동적 생성**하므로 스텁이 없다.
+# 어댑터 내부에서만 완화하고, 어댑터 밖으로 나가는 값은 도메인 모델이라 strict가 유지된다.
+[[tool.mypy.overrides]]
+module = "src.infrastructure.vcenter.*"
+disallow_untyped_calls = false
+warn_return_any = false
+
+# python-jose는 스텁을 제공하지 않는다.
+[[tool.mypy.overrides]]
+module = "jose.*"
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

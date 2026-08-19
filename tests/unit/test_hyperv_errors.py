@@ -15,9 +15,11 @@ from pypsrp.exceptions import WinRMTransportError
 from src.domain.exceptions import (
     AuthenticationError,
     CollectionError,
-    PermissionError as DomainPermissionError,
     UnreachableError,
     ValidationError,
+)
+from src.domain.exceptions import (
+    PermissionError as DomainPermissionError,
 )
 from src.infrastructure.hyperv.errors import translate_error
 
